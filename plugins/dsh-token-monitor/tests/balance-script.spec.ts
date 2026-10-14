@@ -26,7 +26,7 @@ describe('isolated balance scripts', () => {
     expect(validateScriptBalance({ currency: 'credits', totalBalance: '-0.5' })).toMatchObject({ currency: 'credits', totalBalance: -0.5 })
   })
   it('rejects local, reserved, metadata and IPv4-mapped private addresses', () => {
-    for (const address of ['127.0.0.1', '10.0.0.1', '169.254.169.254', '192.168.1.1', '100.64.0.1', '0.0.0.0', '::1', 'fc00::1', 'fe80::1', '::ffff:127.0.0.1', '2001:db8::1']) expect(publicBalanceAddress(address), address).toBe(false)
+    for (const address of ['127.0.0.1', '10.0.0.1', '169.254.169.254', '192.168.1.1', '100.64.0.1', '0.0.0.0', '::1', 'fc00::1', 'fe80::1', '::ffff:127.0.0.1', '2001:db8::1', '198.18.0.1']) expect(publicBalanceAddress(address), address).toBe(false)
     expect(publicBalanceAddress('1.1.1.1')).toBe(true)
     expect(publicBalanceAddress('2606:4700:4700::1111')).toBe(true)
   })

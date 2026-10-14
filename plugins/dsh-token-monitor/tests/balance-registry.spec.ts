@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { BalanceNetworkError } from '../src/balance-network.ts'
 import { BalanceRegistry } from '../src/balance-registry.ts'
 import { OFFICIAL_BALANCE_SCRIPT, validateBalanceRequest, evaluateBalanceScript } from '../src/balance-script.ts'
 
@@ -84,5 +85,51 @@ describe('provider balance registry', () => {
     await registry.get('a')
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ path: '/user/balance' }),
       'https://api.deepseek.com', 'key-a', expect.any(AbortSignal))
+  })
+  it('rechecks after a plain transport failure on the next interval instead of escalating the wait', async () => {
+    const { script } = await setup()
+    const identity = { apiKey: 'key-a', baseURL: 'https://api.deepseek.com' }
+    let now = 0
+    const request = vi.fn(async () => raw)
+    const clocked = new BalanceRegistry({ readScript: async () => script, resolveIdentity: async () => identity,
+      request, now: () => now })
+    request.mockRejectedValueOnce(new Error('Balance network request failed or timed out'))
+    expect(await clocked.get('a')).toBeUndefined()
+    expect(await clocked.get('a')).toBeUndefined()
+    expect(request).toHaveBeenCalledOnce()
+    now += 15_000
+    expect(await clocked.get('a')).toMatchObject({ totalBalance: 12 })
+    expect(request).toHaveBeenCalledTimes(2)
+    await clocked.stop()
+  })
+  it('keeps the short interval for a policy refusal instead of widening the address rule', async () => {
+    const { script } = await setup()
+    const identity = { apiKey: 'key-a', baseURL: 'https://api.deepseek.com' }
+    const request = vi.fn().mockRejectedValue(new BalanceNetworkError('blocked', 'must resolve to public or supported Fake-IP addresses'))
+    const warn = vi.fn()
+    const registry = new BalanceRegistry({ readScript: async () => script, resolveIdentity: async () => identity, request, warn })
+    expect(await registry.get('a')).toBeUndefined()
+    expect(await registry.get('a')).toBeUndefined()
+    expect(request).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledOnce()
+    await registry.stop()
+  })
+  it('honours an upstream retry wait and reports it once per failure streak', async () => {
+    const { script } = await setup()
+    const identity = { apiKey: 'key-a', baseURL: 'https://api.deepseek.com' }
+    let now = 0
+    const request = vi.fn().mockRejectedValue(new BalanceNetworkError('rate-limited', 'Balance HTTP 429', 40_000))
+    const warn = vi.fn()
+    const registry = new BalanceRegistry({ readScript: async () => script, resolveIdentity: async () => identity, request, warn, now: () => now })
+    expect(await registry.get('a')).toBeUndefined()
+    now += 15_000
+    expect(await registry.get('a')).toBeUndefined()
+    expect(request).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledOnce()
+    now += 25_000
+    expect(await registry.get('a')).toBeUndefined()
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalledOnce()
+    await registry.stop()
   })
 })

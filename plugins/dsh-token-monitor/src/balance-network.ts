@@ -4,6 +4,9 @@ import { request as httpsRequest } from 'node:https'
 import ipaddr from 'ipaddr.js'
 import { MAX_BALANCE_RESPONSE_BYTES, validateBalanceRequest, type BalanceRequest } from './balance-script.ts'
 
+/** Fake-IP range handed back by TUN proxies (Mihomo/Clash default, RFC 2544 space). */
+const FAKE_IP_V4 = ipaddr.IPv4.parseCIDR('198.18.0.0/15')
+
 /** Accept only globally routable unicast addresses, including mapped IPv4 checks.
  * @param address Resolved numeric address.
  * @returns Whether the address may receive provider credentials.
@@ -12,6 +15,49 @@ export function publicBalanceAddress(address: string): boolean {
   if (!ipaddr.isValid(address)) return false
   const parsed = ipaddr.process(address)
   return parsed.range() === 'unicast'
+}
+
+/** Accept the one Fake-IP range a TUN proxy substitutes for an ordinary public domain.
+ * Only native IPv4 answers qualify; IPv4-mapped IPv6 forms and every other reserved range
+ * stay refused, so this is not a general allowance for non-public destinations.
+ * @param address Resolved numeric address.
+ * @returns Whether the address is the IPv4 Fake-IP candidate range.
+ */
+export function fakeIpBalanceAddress(address: string): boolean {
+  if (!ipaddr.isValid(address) || !ipaddr.IPv4.isValid(address)) return false
+  const parsed = ipaddr.process(address)
+  return parsed.kind() === 'ipv4' && parsed.match(FAKE_IP_V4)
+}
+
+/** Backoff-relevant transport classification; never carries host, path or credential data. */
+export type BalanceNetworkFailure = 'blocked' | 'rate-limited'
+
+/** Ordinary transport results stay plain errors and keep the short-recovery backoff, while an
+ * explicit upstream wait or a policy refusal is surfaced so the caller can classify the failure.
+ */
+export class BalanceNetworkError extends Error {
+  /** @param kind Backoff-relevant classification.
+   * @param message Fixed message without provider or network details.
+   * @param retryAfterMs Explicit upstream wait, already bounded, when the provider asked for one.
+   */
+  constructor(readonly kind: BalanceNetworkFailure, message: string, readonly retryAfterMs?: number) {
+    super(message)
+    this.name = 'BalanceNetworkError'
+  }
+}
+
+/** Read an explicit provider wait so a requested pause is never shortened to the default.
+ * @param headers Response headers from the provider.
+ * @returns Bounded retry delay in milliseconds, or undefined when absent or unusable.
+ */
+function retryAfterMs(headers: Record<string, string | string[] | undefined>): number | undefined {
+  const raw = headers['retry-after']
+  const value = Array.isArray(raw) ? raw[0] : raw
+  if (typeof value !== 'string' || value.trim() === '') return undefined
+  const seconds = Number(value.trim())
+  const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now()
+  if (!Number.isFinite(delay) || delay <= 0) return undefined
+  return Math.min(Math.max(delay, 15_000), 1_800_000)
 }
 
 /** Query one Host-resolved destination; scripts never receive its origin, key or raw headers.
@@ -29,6 +75,8 @@ export async function requestBalanceJson(descriptor: BalanceRequest, baseURL: st
     throw new Error('Balance provider endpoint must be exact HTTPS')
   }
   const url = new URL(allowed.path, base.origin)
+  // Fake-IP substitution applies only to a domain target; literal addresses keep the original rule.
+  const domainTarget = !ipaddr.isValid(url.hostname.replace(/^\[|\]$/g, ''))
   const boundedSignal = AbortSignal.any([signal, AbortSignal.timeout(10_000)])
   let cancelLookup: (() => void) | undefined
   const records = await Promise.race([lookup(url.hostname.replace(/^\[|\]$/g, ''), { all: true, verbatim: true }),
@@ -38,7 +86,10 @@ export async function requestBalanceJson(descriptor: BalanceRequest, baseURL: st
       else boundedSignal.addEventListener('abort', cancelLookup, { once: true })
     })]).finally(() => { if (cancelLookup) boundedSignal.removeEventListener('abort', cancelLookup) })
   boundedSignal.throwIfAborted()
-  if (records.length === 0 || records.some(record => !publicBalanceAddress(record.address))) throw new Error('Balance destination must resolve exclusively to public addresses')
+  // A TUN proxy answers ordinary domains with its Fake-IP range; any other non-public answer stays refused.
+  const acceptable = (address: string): boolean => publicBalanceAddress(address)
+    || (domainTarget && fakeIpBalanceAddress(address))
+  if (records.length === 0 || records.some(record => !acceptable(record.address))) throw new BalanceNetworkError('blocked', 'Balance destination must resolve to public or supported Fake-IP addresses')
   const pinned = records[0]!
   return new Promise((resolve, reject) => {
     const req = httpsRequest(url, {
@@ -55,7 +106,9 @@ export async function requestBalanceJson(descriptor: BalanceRequest, baseURL: st
       const status = res.statusCode ?? 0
       if (status < 200 || status >= 300) {
         res.destroy()
-        reject(new Error(`Balance HTTP ${status}`))
+        // A 429 keeps the provider's own wait so the query never polls harder than requested.
+        const wait = status === 429 ? retryAfterMs(res.headers) : undefined
+        reject(wait === undefined ? new Error(`Balance HTTP ${status}`) : new BalanceNetworkError('rate-limited', `Balance HTTP ${status}`, wait))
         return
       }
       if (res.headers['content-encoding'] && res.headers['content-encoding'] !== 'identity') {

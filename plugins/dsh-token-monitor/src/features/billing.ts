@@ -51,7 +51,9 @@ export function apply(ctx: Context, services: ModuleServices): void {
         return identity === undefined ? undefined : builtInBalanceAdapter(identity.baseURL)
       })
       const registry = new BalanceRegistry({ readScript: provider => scripts.read(provider),
-        resolveIdentity: provider => resolveBalanceIdentity(balanceCtx, provider, services.store.get().balanceProviders?.[provider]), request: requestBalanceJson })
+        resolveIdentity: provider => resolveBalanceIdentity(balanceCtx, provider, services.store.get().balanceProviders?.[provider]), request: requestBalanceJson,
+        // Fixed-message diagnostics only; host, path, address and credentials never reach the log.
+        warn: message => balanceCtx.logger.warn(message) })
       attachAccountBalance(balanceCtx, source => registry.setAccountSource(source))
       balanceCtx.effect(() => () => registry.stop(), 'token-monitor: balance requests')
       balanceCtx.inject(['webServer', 'connection'], web => registerBalanceApi(web, scripts, registry))

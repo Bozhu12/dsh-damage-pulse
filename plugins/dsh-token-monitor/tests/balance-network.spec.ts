@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { lookup } from 'node:dns/promises'
 import { request } from 'node:https'
-import { publicBalanceAddress, requestBalanceJson } from '../src/balance-network.ts'
+import { BalanceNetworkError, fakeIpBalanceAddress, publicBalanceAddress, requestBalanceJson } from '../src/balance-network.ts'
 
 vi.mock('node:dns/promises', () => ({ lookup: vi.fn() }))
 vi.mock('node:https', () => ({ request: vi.fn() }))
@@ -75,4 +75,46 @@ it('cancels while DNS is unresolved without starting a request', async () => {
   controller.abort()
   await expect(pending).rejects.toThrow('cancelled')
   expect(request).not.toHaveBeenCalled()
+})
+
+it('categorises only the native IPv4 Fake-IP range as an automatic candidate', () => {
+  for (const address of ['198.18.0.1', '198.18.0.108', '198.19.255.255']) expect(fakeIpBalanceAddress(address), address).toBe(true)
+  for (const address of ['198.17.255.255', '198.20.0.0', '8.8.8.8', '10.0.0.1', '::ffff:198.18.0.1', '2001:db8::1', 'fe80::1', 'not-an-ip']) expect(fakeIpBalanceAddress(address), address).toBe(false)
+})
+
+it('accepts a domain answered with the TUN Fake-IP range and still pins that exact address', async () => {
+  vi.mocked(lookup).mockResolvedValue([{ address: '198.18.0.108', family: 4 }] as never)
+  expect(await requestBalanceJson(descriptor, 'https://balance.example', 'test-key', new AbortController().signal)).toEqual({ total: 12 })
+  expect(destination.hostname).toBe('balance.example')
+  const pinnedLookup = options.lookup as (host: string, opts: { all: boolean }, cb: (...values: unknown[]) => void) => void
+  const callback = vi.fn()
+  pinnedLookup('balance.example', { all: false }, callback)
+  expect(callback).toHaveBeenLastCalledWith(null, '198.18.0.108', 4)
+})
+
+it('keeps the first checked record when public and Fake-IP answers are mixed', async () => {
+  vi.mocked(lookup).mockResolvedValue([{ address: '8.8.8.8', family: 4 }, { address: '198.18.0.108', family: 4 }] as never)
+  expect(await requestBalanceJson(descriptor, 'https://balance.example', 'test-key', new AbortController().signal)).toEqual({ total: 12 })
+  const pinnedLookup = options.lookup as (host: string, opts: { all: boolean }, cb: (...values: unknown[]) => void) => void
+  const callback = vi.fn()
+  pinnedLookup('balance.example', { all: false }, callback)
+  expect(callback).toHaveBeenLastCalledWith(null, '8.8.8.8', 4)
+})
+
+it('refuses Fake-IP answers for a literal address target and for mapped or non-native forms', async () => {
+  vi.mocked(lookup).mockResolvedValue([{ address: '198.18.0.108', family: 4 }] as never)
+  await expect(requestBalanceJson(descriptor, 'https://198.18.0.9', 'test-key', new AbortController().signal)).rejects.toBeInstanceOf(BalanceNetworkError)
+  expect(request).not.toHaveBeenCalled()
+  vi.mocked(lookup).mockResolvedValue([{ address: '::ffff:198.18.0.1', family: 6 }] as never)
+  await expect(requestBalanceJson(descriptor, 'https://balance.example', 'test-key', new AbortController().signal)).rejects.toBeInstanceOf(BalanceNetworkError)
+  expect(request).not.toHaveBeenCalled()
+})
+
+it('surfaces a bounded upstream wait for 429 without shortening it to the default interval', async () => {
+  status = 429; headers = { 'retry-after': '30' }
+  const failure = await requestBalanceJson(descriptor, 'https://balance.example', 'test-key', new AbortController().signal).catch(error => error as BalanceNetworkError)
+  expect(failure).toBeInstanceOf(BalanceNetworkError)
+  expect(failure.kind).toBe('rate-limited')
+  expect(failure.retryAfterMs).toBe(30_000)
+  expect(response.destroy).toHaveBeenCalled()
 })

@@ -2,17 +2,20 @@
 import { randomUUID } from 'node:crypto'
 import type { BalanceScriptSnapshot } from './balance-config.ts'
 import { evaluateBalanceScript, validateScriptBalance, type BalanceRequest } from './balance-script.ts'
+import { BalanceNetworkError } from './balance-network.ts'
 import type { BalanceInfo } from './types.ts'
 import type { AccountBalanceSource } from './balance-account.ts'
 
 export interface BalanceIdentity { apiKey: string; baseURL: string }
 export interface ProviderBalance extends BalanceInfo { provider: string; scriptRevision: number; credentialGeneration: string }
-interface Entry { identity: BalanceIdentity; revision: number; generation: string; controller: AbortController; pending?: Promise<ProviderBalance | undefined>; value?: ProviderBalance; nextAttempt: number; failures: number }
+interface Entry { identity: BalanceIdentity; revision: number; generation: string; controller: AbortController; pending?: Promise<ProviderBalance | undefined>; value?: ProviderBalance; nextAttempt: number; failures: number; lastFailure?: string }
 interface Dependencies {
   readScript(provider: string): Promise<BalanceScriptSnapshot>
   resolveIdentity(provider: string): Promise<BalanceIdentity | undefined>
   request(descriptor: BalanceRequest, baseURL: string, apiKey: string, signal: AbortSignal): Promise<unknown>
   now?: () => number
+  /** Optional fixed-message diagnostic sink; receives no targets, headers or provider content. */
+  warn?: (message: string) => void
 }
 
 /** Demand-driven cache: one request per provider, no polling of unused providers. */
@@ -96,13 +99,23 @@ export class BalanceRegistry {
           || latestIdentity?.apiKey !== identity.apiKey || latestIdentity.baseURL !== identity.baseURL) { this.invalidate(provider); return undefined }
         current.value = { ...balance, updatedAt: now(), provider, scriptRevision: script.revision, credentialGeneration: current.generation }
         current.failures = 0
+        current.lastFailure = undefined
         current.nextAttempt = now() + 15_000
         return current.value
-      } catch {
+      } catch (error) {
         // No upstream exception or response content is exposed to logs or clients.
         delete current.value
         current.failures++
-        current.nextAttempt = now() + Math.min(300_000, 15_000 * 2 ** Math.min(current.failures, 5))
+        // Recovery stays fast: an ordinary transport failure waits one poll interval instead of
+        // growing exponentially, so a restarted proxy is picked up by the next scheduled read.
+        // An upstream 429 keeps the wait it asked for; a policy refusal keeps the same short
+        // interval because the address rule is recorded rather than the exemption widened.
+        const requested = error instanceof BalanceNetworkError ? error.retryAfterMs : undefined
+        current.nextAttempt = now() + (requested ?? 15_000)
+        // One diagnostic per failure streak or classification change; never per retry.
+        const kind = error instanceof BalanceNetworkError ? error.kind : 'transport'
+        if (current.failures === 1 || current.lastFailure !== kind) this.dependencies.warn?.('dsh-token-monitor: balance query failed (' + kind + ')')
+        current.lastFailure = kind
         return undefined
       } finally { this.active--; delete current.pending }
     })()
