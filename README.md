@@ -196,7 +196,7 @@
 
 ## 安装
 
-本仓库从 `0.2.0` 起提供标准 DSH Host + Client 组合包和预编译产物。当前版本为 **4.2.6**：兼容 DeepSeek Harness `0.2.1-rc.1` 桌面版，修复新宿主因插件版本要求未包含该预发布版本而跳过加载的问题；保留原有宿主支持范围，仅新增经过桌面验证的精确版本。`4.2.5` 的 TUN / Fake-IP 余额修复继续保留：插件现在会自动接受代理对域名返回的 `198.18.0.0/15`（Fake-IP）解析，无需任何新设置；查询失败时恢复更快（统一 15 秒短退避，供应商限流按它给出的等待时间处理），失败仍沿用原有的“无余额显示”，不出现错误码或错误文案。
+本仓库从 `0.2.0` 起提供标准 DSH Host + Client 组合包和预编译产物。当前版本为 **4.2.7**：兼容 DeepSeek Harness `0.2.1-rc.2` 桌面版，修复新宿主因插件版本要求未包含该预发布版本而跳过加载的问题；保留原有宿主支持范围，仅新增经过桌面验证的精确版本。`4.2.6` 已为 `0.2.1-rc.1` 做过同类精确适配并继续保留。`4.2.5` 的 TUN / Fake-IP 余额修复继续保留：插件现在会自动接受代理对域名返回的 `198.18.0.0/15`（Fake-IP）解析，无需任何新设置；查询失败时恢复更快（统一 15 秒短退避，供应商限流按它给出的等待时间处理），失败仍沿用原有的“无余额显示”，不出现错误码或错误文案。
 
 `4.2.4` 修复余额卡右键菜单继承卡片悬停说明、菜单标记不统一的问题；拖动后的卡片使用窗口内相对位置记忆，窗口和卡片尺寸变化后继续保持位置；修复整体卸载后完整重装仍被旧卸载记录阻止恢复的问题。新增子会话用量聚合与显示修复，移除卡片悬停说明，鲸鱼娘动画默认缩放为 80%（保留已有自定义值）。右键菜单不新增恢复默认位置入口。
 
@@ -217,15 +217,15 @@ dsh plugin --profile web add dsh-damage-pulse
 dsh plugin --profile desktop add dsh-damage-pulse
 ```
 
-**4.2.6 通过 GitHub Release 提供预编译 tgz。** npm 包名 `dsh-damage-pulse` 安装的是 registry 上的最新版本：如果本版本已同步到 npm，用包名即可；如果 registry 尚未更新到 4.2.6，请使用下面的 GitHub Release 预编译 tgz，或通过插件内的 GitHub 更新入口升级。
+**4.2.7 通过 GitHub Release 提供预编译 tgz。** npm 包名 `dsh-damage-pulse` 安装的是 registry 上的最新版本：如果本版本已同步到 npm，用包名即可；如果 registry 尚未更新到 4.2.7，请使用下面的 GitHub Release 预编译 tgz，或通过插件内的 GitHub 更新入口升级。
 
 需要锁定具体版本时改用 GitHub Release 的预编译 tgz。先分清四种「地址」：npm 包名 `dsh-damage-pulse`、Release 里打包好的 `.tgz` 文件、GitHub 仓库页地址、Release 页的 `Source code` 压缩包——后两种是源码，不含打包阶段才生成的 `runtime/`，装出来无法启动：
 
 ```powershell
 # web 端：
-dsh plugin --profile web add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.6/dsh-damage-pulse-4.2.6.tgz
+dsh plugin --profile web add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.7/dsh-damage-pulse-4.2.7.tgz
 # 桌面端：
-dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.6/dsh-damage-pulse-4.2.6.tgz
+dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.7/dsh-damage-pulse-4.2.7.tgz
 ```
 
 > 不要用源码地址安装。`runtime/` 是包内的预编译产物，只在打包阶段由 `scripts/prepare-package-runtime.mjs` 生成且不入库（`.gitignore`），所以 `dsh plugin add github:wssfk12138/dsh-damage-pulse`、GitHub 仓库页地址、Release 页的 `Source code` 压缩包，以及本地 clone 出来的源码目录，装出来的包都只有 `lib/` 没有 `runtime/`，插件启动时会直接失败（现在的报错会点名修复方式，而不是抛出无法定位的 ENOENT），还可能被宿主侧的启动失败隔离直接停用该行。如果你确实要从源码安装，请先在源码目录完成构建与 `runtime/` 生成，再挂载这个构建产物；正确构建过的源码可以正常运行，不能说源码方式绝对不可用。
@@ -265,7 +265,7 @@ dsh --profile desktop
 
 正常升级无需删除配置、清空账本或重新安装，之前主动卸载的模块也不会自动恢复。若安装或启动仍报错，请保留错误内容和当前版本，便于排查。
 
-本次已在 DeepSeek Harness `0.2.0-rc.2` 桌面版验证：4.2.1 通过内置更新升级、模块为 4.2.2 但界面仍旧的安装升级，以及 4.2.3 tgz 全新安装；完整重启后无需手动刷新。4.2.6 另在 `0.2.1-rc.1` 桌面版以实际 tgz 验证加载、合成非零余额与用量、设置保存及完整重启保持、明细和窄窗口；其他宿主版本未逐一实机验证。
+本次已在 DeepSeek Harness `0.2.0-rc.2` 桌面版验证：4.2.1 通过内置更新升级、模块为 4.2.2 但界面仍旧的安装升级，以及 4.2.3 tgz 全新安装；完整重启后无需手动刷新。4.2.6 另在 `0.2.1-rc.1` 桌面版以实际 tgz 验证加载、合成非零余额与用量、设置保存及完整重启保持、明细和窄窗口；4.2.7 在 `0.2.1-rc.2` 桌面版复验同一条路径。其他宿主版本未逐一实机验证。
 
 ### 4.2.1 升级与恢复
 
@@ -275,7 +275,7 @@ dsh --profile desktop
 - 4.2.1 使用独立版本的完整清单和模块资产，继续校验文件大小与 SHA-256。升级时保留现有设置、usage.jsonl 账本和模块卸载状态；不要用删除账本、清除卸载标记或跳过摘要检查来解决启动问题。
 - 如需恢复已卸载模块，在“卸载与更新”中显式选择恢复；恢复只针对所选模块。请在更改版本前备份 profile 与插件数据；本版不承诺通过降级自动撤销数据迁移。
 
-4.2.1–4.2.5 已在 DSH `0.2.0-rc.2` 真实桌面 EXE 的隔离 profile 中验证新装、升级、设置重启保持、资源和模块生命周期；旧设置服务 `0.1.0-rc.7` 与 `0.1.7` profile 的兼容检查另有覆盖。peer 范围不代表其中每个宿主版本都逐一实机测试。微信请求、进程生命周期和通知作用域有自动化覆盖，本轮未重新执行真实微信扫码与插件消息投递。
+4.2.1–4.2.6 已在 DSH `0.2.0-rc.2` 真实桌面 EXE 的隔离 profile 中验证新装、升级、设置重启保持、资源和模块生命周期；旧设置服务 `0.1.0-rc.7` 与 `0.1.7` profile 的兼容检查另有覆盖。peer 范围不代表其中每个宿主版本都逐一实机测试。微信请求、进程生命周期和通知作用域有自动化覆盖，本轮未重新执行真实微信扫码与插件消息投递。
 
 ### 原生会话金额（标准包能力）
 
