@@ -8,6 +8,20 @@ import type { BalanceIdentity } from './balance-registry.ts'
 import type { BalanceProviderEntry } from './balance-storage.ts'
 import { isOfficialProvider } from './pricing.ts'
 
+/**
+ * API base URLs for known configurable providers whose profiles omit an
+ * explicit baseURL. Mirrors the launch adapter defaults so balance querying
+ * works the moment a provider is configured; an explicit profile baseURL
+ * always wins.
+ */
+const PROVIDER_BASE_URL_FALLBACKS: Record<string, string> = Object.freeze({
+  'zai-coding-cn': 'https://open.bigmodel.cn/api/coding/paas/v4',
+  'zai-coding': 'https://api.z.ai/api/coding/paas/v4',
+  'kimi-coding': 'https://api.kimi.com/coding/v1',
+  'minimax-cn': 'https://api.minimaxi.com/anthropic',
+  'minimax': 'https://api.minimax.io/anthropic',
+})
+
 /** Read the provider profile via its owning adapter's settings directory.
  * @param ctx Context with LLM, settings and credentials.
  * @param provider Exact configured route.
@@ -37,6 +51,7 @@ export async function resolveBalanceIdentity(
     && (descriptor.settingsNs === 'llm-deepseek' || descriptor.settingsNs === 'llm-deepseek-account')
   const ref = fields.apiKeyEnv ?? (official ? 'DEEPSEEK_API_KEY' : undefined)
   const baseURL = fields.baseURL ?? (official ? launchEnvironmentOf(ctx).get('DEEPSEEK_BASE_URL')?.value ?? 'https://api.deepseek.com' : undefined)
+    ?? PROVIDER_BASE_URL_FALLBACKS[provider]
   if (typeof ref !== 'string' || !ref || typeof baseURL !== 'string') return undefined
   const resolved = await ctx.credentials.resolve(credentialRef(ref))
   if (!resolved?.value) return undefined
