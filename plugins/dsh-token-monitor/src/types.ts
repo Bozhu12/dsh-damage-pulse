@@ -113,6 +113,16 @@ export interface SessionSummary {
   lastActivity: number
 }
 
+/** 一个滚动用量窗口（如套餐的 5 小时 / 每周积分额度）。 */
+export interface BalanceWindow {
+  /** 短标签，如 "5h" / "1w"。 */
+  label: string
+  used: number
+  total: number
+  /** epoch 毫秒的下一次重置时间，可选。 */
+  resetAt?: number
+}
+
 /** DeepSeek 账户余额。 */
 export interface BalanceInfo {
   currency: string
@@ -121,6 +131,8 @@ export interface BalanceInfo {
   toppedUpBalance: number
   isAvailable: boolean
   updatedAt: number
+  /** 可选的滚动用量窗口（如 GLM Coding Plan 的 5 小时 / 每周积分）。 */
+  windows?: BalanceWindow[]
 }
 
 /** 北京时间自然日内的合格 DeepSeek 官方调用花费汇总。 */

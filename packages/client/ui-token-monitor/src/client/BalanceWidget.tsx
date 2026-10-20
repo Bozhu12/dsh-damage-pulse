@@ -1645,6 +1645,12 @@ export function BalanceWidget({
             {currencySymbol(balanceInfo?.currency)}{shownBalance.toFixed(2)}
           </span>
         </span>}
+        {balanceAvailable && !!balanceInfo?.windows?.length && <span
+          style={{ fontWeight: 500, fontSize: BALANCE_LABEL_FONT_SIZE, lineHeight: AMOUNT_LINE_HEIGHT, color: 'rgba(255,255,255,0.78)', whiteSpace: 'nowrap' }}
+          aria-label={'滚动额度：' + balanceInfo.windows.map(w => w.label + ' 剩余 ' + Math.max(w.total - w.used, 0) + '，共 ' + w.total).join('；')}
+        >
+          {balanceInfo.windows.map(w => w.label + ' ' + Math.max(w.total - w.used, 0) + '/' + w.total).join(' · ')}
+        </span>}
         {usageVisible && <div
           style={{ display: 'grid', gridAutoFlow: 'column', alignItems: 'center', columnGap: DISPLAY_GAP, fontSize: DATA_FONT_SIZE, lineHeight: DATA_LINE_HEIGHT, color: 'rgba(255,255,255,0.92)' }}
           aria-label={'最近一次成功请求：未缓存输入 ' + fmtTokens(usageOverview?.inputTokens ?? null) + '；输出 ' + fmtTokens(usageOverview?.outputTokens ?? null) + '；缓存命中 ' + fmtTokens(usageOverview?.cacheReadTokens ?? null) + '；首字延迟 ' + fmtLatency(usageOverview?.firstMs ?? null) + '；总耗时 ' + fmtLatency(usageOverview?.totalMs ?? null) + usageRecordNote}

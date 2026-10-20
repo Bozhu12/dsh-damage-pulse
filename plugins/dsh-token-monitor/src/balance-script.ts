@@ -10,6 +10,25 @@ export const MAX_BALANCE_RESPONSE_BYTES = 262_144
 export interface BalanceRequest { path: string; method: 'GET' | 'POST'; auth: 'bearer' | 'x-api-key'; body?: string }
 /** Validated script output; credits remain distinct from monetary currencies. */
 export interface ScriptBalance { currency: string; totalBalance: number; grantedBalance: number; toppedUpBalance: number; isAvailable: boolean }
+/** One rolling usage window (for example a 5-hour or weekly plan quota). */
+export interface ScriptBalanceWindow { label: string; used: number; total: number; resetAt?: number }
+
+const MAX_BALANCE_WINDOWS = 8
+
+function balanceWindows(value: unknown): ScriptBalanceWindow[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || value.length > MAX_BALANCE_WINDOWS) throw new Error('Invalid balance windows')
+  return value.map(item => {
+    const entry = object(item)
+    if (typeof entry.label !== 'string' || entry.label.length > 16) throw new Error('Invalid balance window label')
+    if (typeof entry.used !== 'number' || !Number.isFinite(entry.used) || entry.used < 0) throw new Error('Invalid balance window usage')
+    if (typeof entry.total !== 'number' || !Number.isFinite(entry.total) || entry.total < 0) throw new Error('Invalid balance window total')
+    if (entry.resetAt !== undefined && (typeof entry.resetAt !== 'number' || !Number.isFinite(entry.resetAt))) throw new Error('Invalid balance window reset time')
+    return entry.resetAt === undefined
+      ? { label: entry.label, used: entry.used, total: entry.total }
+      : { label: entry.label, used: entry.used, total: entry.total, resetAt: entry.resetAt }
+  })
+}
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected an object')
@@ -82,10 +101,11 @@ export function validateScriptBalance(value: unknown): ScriptBalance {
   const item = object(value)
   if (typeof item.currency !== 'string' || !/^(?:[A-Z]{3}|credits)$/.test(item.currency)) throw new Error('Balance currency must be an ISO code or credits')
   if (item.isAvailable !== undefined && typeof item.isAvailable !== 'boolean') throw new Error('Invalid balance availability')
+  const windows = balanceWindows(item.windows)
   return { currency: item.currency, totalBalance: amount(item.totalBalance),
     grantedBalance: item.grantedBalance === undefined ? 0 : amount(item.grantedBalance),
     toppedUpBalance: item.toppedUpBalance === undefined ? 0 : amount(item.toppedUpBalance),
-    isAvailable: item.isAvailable !== false }
+    isAvailable: item.isAvailable !== false, ...(windows ? { windows } : {}) }
 }
 
 /** Official adapter seed; an explicitly empty saved script disables it. */

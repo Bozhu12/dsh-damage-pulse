@@ -28,6 +28,33 @@ export const FASTAI_BALANCE_SCRIPT = `({
   }
 })`
 
+/**
+ * GLM Coding Plan (Zhipu) quota endpoint: rolling CREDIT_LIMIT windows for the
+ * 5-hour and weekly credit allowances. The primary balance shows the shortest
+ * window's remaining credits; both windows travel as `windows` for the UI.
+ */
+export const GLM_BALANCE_SCRIPT = `({
+  request: { path: "/api/monitor/usage/quota/limit", method: "GET", auth: "bearer" },
+  parse(response) {
+    const limits = (response?.data?.limits ?? []).filter(item => item && item.type === "CREDIT_LIMIT");
+    const unitChar = unit => unit === 3 ? "h" : unit === 4 ? "m" : "w";
+    const windows = limits.map(item => ({
+      label: item.number + unitChar(item.unit),
+      used: item.currentValue ?? 0,
+      total: item.usage ?? 0,
+      resetAt: item.nextResetTime
+    }));
+    const primary = windows[0];
+    if (!primary) return { isAvailable: false, totalBalance: 0, currency: "credits", windows: [] };
+    return {
+      isAvailable: true,
+      totalBalance: Math.max(primary.total - primary.used, 0),
+      currency: "credits",
+      windows
+    };
+  }
+})`
+
 /** One keyless adapter bound to the gateway domain that serves it. */
 export interface BuiltInBalanceAdapter {
   /** Registrable domain of the provider endpoint, matched on a label boundary. */
@@ -53,6 +80,18 @@ export const BUILT_IN_BALANCE_ADAPTERS: readonly BuiltInBalanceAdapter[] = Objec
     label: 'fastaitoken',
     script: FASTAI_BALANCE_SCRIPT,
     endpoint: Object.freeze({ path: '/v1/usage', method: 'GET' as const }),
+  },
+  {
+    domain: 'bigmodel.cn',
+    label: 'GLM Coding Plan',
+    script: GLM_BALANCE_SCRIPT,
+    endpoint: Object.freeze({ path: '/api/monitor/usage/quota/limit', method: 'GET' as const }),
+  },
+  {
+    domain: 'z.ai',
+    label: 'GLM Coding Plan',
+    script: GLM_BALANCE_SCRIPT,
+    endpoint: Object.freeze({ path: '/api/monitor/usage/quota/limit', method: 'GET' as const }),
   },
 ])
 
