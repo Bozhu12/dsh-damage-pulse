@@ -28,6 +28,17 @@ beforeEach(() => {
 })
 afterEach(() => { vi.resetAllMocks() })
 
+type PinnedLookup = (host: string, opts: { all: boolean }, cb: (...values: unknown[]) => void) => void
+
+/** Read the pinned answer the way node does, and prove it is never handed over synchronously. */
+const readPin = async (opts: { all: boolean }) => {
+  const callback = vi.fn()
+  ;(options.lookup as PinnedLookup)('balance.example', opts, callback)
+  expect(callback).not.toHaveBeenCalled()
+  await new Promise(resolve => setImmediate(resolve))
+  return callback
+}
+
 it.each(['127.0.0.1', '10.0.0.1', '169.254.169.254', '192.168.1.1', '::1', 'fc00::1', 'fe80::1', '::ffff:127.0.0.1', '100.64.0.1'])('rejects non-public address %s', address => {
   expect(publicBalanceAddress(address)).toBe(false)
 })
@@ -44,12 +55,8 @@ it('pins the checked address while keeping the original TLS hostname and bounded
   expect(options.agent).toBe(false)
   expect(options.signal).toBeInstanceOf(AbortSignal)
   expect(options.headers).toMatchObject({ Authorization: 'Bearer test-key', 'Accept-Encoding': 'identity' })
-  const pinnedLookup = options.lookup as (host: string, opts: { all: boolean }, cb: (...values: unknown[]) => void) => void
-  const callback = vi.fn()
-  pinnedLookup('balance.example', { all: false }, callback)
-  expect(callback).toHaveBeenLastCalledWith(null, '8.8.8.8', 4)
-  pinnedLookup('balance.example', { all: true }, callback)
-  expect(callback).toHaveBeenLastCalledWith(null, [{ address: '8.8.8.8', family: 4 }])
+  expect(await readPin({ all: false })).toHaveBeenLastCalledWith(null, '8.8.8.8', 4)
+  expect(await readPin({ all: true })).toHaveBeenLastCalledWith(null, [{ address: '8.8.8.8', family: 4 }])
 })
 
 it('rejects redirects without forwarding credentials to the new destination', async () => {
@@ -86,19 +93,36 @@ it('accepts a domain answered with the TUN Fake-IP range and still pins that exa
   vi.mocked(lookup).mockResolvedValue([{ address: '198.18.0.108', family: 4 }] as never)
   expect(await requestBalanceJson(descriptor, 'https://balance.example', 'test-key', new AbortController().signal)).toEqual({ total: 12 })
   expect(destination.hostname).toBe('balance.example')
-  const pinnedLookup = options.lookup as (host: string, opts: { all: boolean }, cb: (...values: unknown[]) => void) => void
-  const callback = vi.fn()
-  pinnedLookup('balance.example', { all: false }, callback)
-  expect(callback).toHaveBeenLastCalledWith(null, '198.18.0.108', 4)
+  expect(await readPin({ all: false })).toHaveBeenLastCalledWith(null, '198.18.0.108', 4)
 })
 
 it('keeps the first checked record when public and Fake-IP answers are mixed', async () => {
   vi.mocked(lookup).mockResolvedValue([{ address: '8.8.8.8', family: 4 }, { address: '198.18.0.108', family: 4 }] as never)
   expect(await requestBalanceJson(descriptor, 'https://balance.example', 'test-key', new AbortController().signal)).toEqual({ total: 12 })
-  const pinnedLookup = options.lookup as (host: string, opts: { all: boolean }, cb: (...values: unknown[]) => void) => void
-  const callback = vi.fn()
-  pinnedLookup('balance.example', { all: false }, callback)
-  expect(callback).toHaveBeenLastCalledWith(null, '8.8.8.8', 4)
+  expect(await readPin({ all: false })).toHaveBeenLastCalledWith(null, '8.8.8.8', 4)
+})
+
+it('keeps a connect failure that escapes at socket level inside the promise', async () => {
+  let pendingRequest: EventEmitter | undefined
+  const socket = new EventEmitter()
+  vi.mocked(request).mockImplementation(((url: URL, config: Record<string, unknown>) => {
+    destination = url; options = config
+    const req = Object.assign(new EventEmitter(), { end: () => {} })
+    pendingRequest = req
+    // The host wires its request listeners before the first socket exists, so the socket reaches
+    // the plugin through the request's own 'socket' event.
+    setImmediate(() => { req.emit('socket', socket) })
+    return req
+  }) as never)
+  const outcome = requestBalanceJson(descriptor, 'https://balance.example', 'test-key', new AbortController().signal).catch(error => error as Error)
+  for (let tick = 0; tick < 3; tick += 1) await new Promise(resolve => setImmediate(resolve))
+  expect(socket.listenerCount('error')).toBeGreaterThan(0)
+  // Node destroys the socket and emits this without it ever reaching the request; an unhandled
+  // 'error' event here ended the host process instead of failing this one query.
+  const connectFailure = Object.assign(new Error('connect EADDRNOTAVAIL'), { code: 'EADDRNOTAVAIL' })
+  expect(() => socket.emit('error', connectFailure)).not.toThrow()
+  pendingRequest!.emit('error', connectFailure)
+  expect((await outcome).message).toBe('Balance network request failed or timed out')
 })
 
 it('refuses Fake-IP answers for a literal address target and for mapped or non-native forms', async () => {

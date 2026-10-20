@@ -96,8 +96,14 @@ export async function requestBalanceJson(descriptor: BalanceRequest, baseURL: st
       method: allowed.method, agent: false, signal: boundedSignal,
       // Keep original hostname for TLS validation; the socket uses this exact checked address.
       lookup: (_hostname, options, callback) => {
-        if (options.all) callback(null, [pinned])
-        else callback(null, pinned.address, pinned.family)
+        // Answer on a later tick on purpose: node starts connecting inside this callback, and a
+        // connect errno raised there destroys the socket before the request has attached its
+        // listeners. That error then reaches the process as an unhandled 'error' event and ends
+        // the host, so the pinned answer is never handed over in node's own connect stack.
+        setImmediate(() => {
+          if (options.all) callback(null, [pinned])
+          else callback(null, pinned.address, pinned.family)
+        })
       },
       headers: { Accept: 'application/json', 'Accept-Encoding': 'identity',
         ...(allowed.auth === 'bearer' ? { Authorization: `Bearer ${apiKey}` } : { 'x-api-key': apiKey }),
@@ -128,6 +134,9 @@ export async function requestBalanceJson(descriptor: BalanceRequest, baseURL: st
       })
     })
     req.on('error', () => reject(new Error('Balance network request failed or timed out')))
+    // The same failure mode at socket level stays contained as well, so a connect error can only
+    // ever surface as this promise's rejection and the caller's ordinary backoff.
+    req.on('socket', socket => socket.on('error', () => {}))
     req.end(allowed.body)
   })
 }
