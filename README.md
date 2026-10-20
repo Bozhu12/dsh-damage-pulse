@@ -1,3 +1,5 @@
+[English](README.en.md) | 简体中文
+
 # dsh-damage-pulse
 
 <p align="center">

@@ -36,6 +36,7 @@
     "cordis.patch.yml",
     "tsconfig.bundle.json",
     "README.md",
+    "README.en.md",
     "LICENSE"
   ],
   "scripts": {
