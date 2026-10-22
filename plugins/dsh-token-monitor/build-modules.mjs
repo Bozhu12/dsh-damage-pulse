@@ -12,9 +12,12 @@ const output = process.argv[2] && resolve(process.argv[2])
 if (!output || output === resolve(plugin, 'runtime')) throw new Error('Specify a separate, empty release output directory')
 await mkdir(output, { recursive: true })
 if ((await readdir(output)).length) throw new Error('Release output directory must be empty')
-const source = await readFile(resolve(plugin, 'src/update.ts'), 'utf8')
-const version = source.match(/CURRENT_RELEASE_VERSION\s*=\s*['"](\d+\.\d+\.\d+)['"]/)?.[1]
-if (!version) throw new Error('Release version missing')
+// The release version comes from package.json — the same single source of
+// truth the update checker derives its CURRENT_RELEASE_VERSION from — so a
+// packed release can never carry a stale manifest version after a bump.
+const packageJson = JSON.parse(await readFile(resolve(repo, 'package.json'), 'utf8'))
+const version = packageJson.version
+if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`Release version missing or malformed: ${String(version)}`)
 const ids = ['pet', 'overview', 'notify', 'billing', 'wechat']
 const owners = new Map(['core', ...ids].map(id => [id, []]))
 const artifact = async (owner, root, path, from) => {
