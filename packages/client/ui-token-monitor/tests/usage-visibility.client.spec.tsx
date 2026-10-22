@@ -135,3 +135,28 @@ it('当前会话没有该模型用量时按供应商 + 模型跨会话回退，�
   expect(recordTitle()).toContain('未记录')
   expect(recordTitle()).not.toContain('current-model')
 })
+
+it('额度型供应商只显示滚动窗口，不把 credits 当作余额显示', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+    const url = new URL(input, 'http://localhost')
+    if (url.pathname.endsWith('/settings')) return new Response(JSON.stringify({ schemaVersion: TOKEN_MONITOR_SETTINGS_SCHEMA_VERSION, revision: 1, settings: { ...DEFAULT_TOKEN_MONITOR_SETTINGS } }))
+    if (url.pathname.endsWith('/balance-script')) return new Response(JSON.stringify({ status: 'valid' }))
+    if (url.pathname.endsWith('/balance')) return new Response(JSON.stringify({
+      totalBalance: 41.5,
+      currency: 'credits',
+      windows: [
+        { label: '5h', used: 8.5, total: 50 },
+        { label: '1w', used: 120, total: 300 },
+      ],
+    }))
+    if (url.pathname.endsWith('/charge-events')) return new Response(JSON.stringify({ events: [], seq: 0, streamId: 'test' }))
+    return new Response('null')
+  }))
+  mountWidget(() => 'provider-a')
+  await settle(2500)
+  const text = document.querySelector('[data-token-monitor-balance]')?.textContent ?? ''
+  expect(text).toContain('5h 41.5/50')
+  expect(text).toContain('1w 180/300')
+  expect(text).not.toContain('credits')
+})

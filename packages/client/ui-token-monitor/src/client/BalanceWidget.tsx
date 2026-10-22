@@ -1336,6 +1336,8 @@ export function BalanceWidget({
 
   const amountColor = flash === 'red' ? RED : flash === 'green' ? GREEN : 'var(--dsh-color-accent, #4c8dff)'
   const shownBalance = display ?? balanceInfo?.totalBalance ?? 0
+  /** 额度型供应商（如 GLM Coding Plan）只有滚动窗口，没有可展示的货币余额。 */
+  const quotaOnly = balanceAvailable && (balanceInfo?.windows?.length ?? 0) > 0 && !/^[A-Z]{3}$/.test(balanceInfo?.currency ?? '')
   const whaleWidth = `${String(animationScale * 100)}%`
   const depleted = balanceAvailable && shownBalance <= 0
   const onWhalePoseComplete = (completedPose: WhalePose) => {
@@ -1622,8 +1624,8 @@ export function BalanceWidget({
         </div>
       )}
       <div style={{ position: 'relative', zIndex: 4, display: 'inline-flex', alignItems: 'center', gap: DISPLAY_GAP, whiteSpace: 'nowrap' }} data-token-monitor-display="">
-        {billingInstalled && !usageVisible && <span style={{ fontSize: BALANCE_LABEL_FONT_SIZE }}>{'余额'}</span>}
-        {balanceAvailable && <span
+        {billingInstalled && !usageVisible && <span style={{ fontSize: BALANCE_LABEL_FONT_SIZE }}>{quotaOnly ? '额度' : '余额'}</span>}
+        {balanceAvailable && !quotaOnly && <span
           style={{
             position: 'relative',
             display: 'inline-block',
@@ -1655,7 +1657,9 @@ export function BalanceWidget({
           const shown = balanceInfo.windows.slice(0, 2)
           const extra = balanceInfo.windows.length - shown.length
           return <span
-            style={{ fontWeight: 500, fontSize: BALANCE_LABEL_FONT_SIZE, lineHeight: AMOUNT_LINE_HEIGHT, color: 'rgba(255,255,255,0.78)', whiteSpace: 'nowrap' }}
+            style={quotaOnly
+              ? { fontWeight: 700, fontSize: AMOUNT_FONT_SIZE * 0.82, lineHeight: AMOUNT_LINE_HEIGHT, fontVariantNumeric: 'tabular-nums', color: amountColor, whiteSpace: 'nowrap' }
+              : { fontWeight: 500, fontSize: BALANCE_LABEL_FONT_SIZE, lineHeight: AMOUNT_LINE_HEIGHT, color: 'rgba(255,255,255,0.78)', whiteSpace: 'nowrap' }}
             aria-label={'滚动额度：' + balanceInfo.windows.map(w => w.label + ' 剩余 ' + Math.round(Math.max(w.total - w.used, 0) * 100) / 100 + '，共 ' + w.total).join('；')}
           >
             {shown.map(w => w.label + ' ' + fmtRemaining(w) + '/' + w.total).join(' · ')}{extra > 0 ? ' · +' + extra : ''}
