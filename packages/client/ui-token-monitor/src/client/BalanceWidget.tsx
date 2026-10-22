@@ -1348,6 +1348,7 @@ export function BalanceWidget({
   const usageRecordNote = usageOverview == null
     ? ''
     : '；供应商 ' + (usageOverview.provider ?? '未记录') + ' · 模型 ' + (usageOverview.model ?? '未记录') + ' · 记录时间 ' + fmtRecordTime(usageOverview.timestamp)
+  const usageLabel = '最近一次成功请求：未缓存输入 ' + fmtTokens(usageOverview?.inputTokens ?? null) + '；输出 ' + fmtTokens(usageOverview?.outputTokens ?? null) + '；缓存命中 ' + fmtTokens(usageOverview?.cacheReadTokens ?? null) + '；首字延迟 ' + fmtLatency(usageOverview?.firstMs ?? null) + '；总耗时 ' + fmtLatency(usageOverview?.totalMs ?? null) + usageRecordNote
   return (
     <div
       ref={attachCard}
@@ -1662,7 +1663,8 @@ export function BalanceWidget({
         })()}
         {usageVisible && <div
           style={{ display: 'grid', gridAutoFlow: 'column', alignItems: 'center', columnGap: DISPLAY_GAP, fontSize: DATA_FONT_SIZE, lineHeight: DATA_LINE_HEIGHT, color: 'rgba(255,255,255,0.92)' }}
-          aria-label={'最近一次成功请求：未缓存输入 ' + fmtTokens(usageOverview?.inputTokens ?? null) + '；输出 ' + fmtTokens(usageOverview?.outputTokens ?? null) + '；缓存命中 ' + fmtTokens(usageOverview?.cacheReadTokens ?? null) + '；首字延迟 ' + fmtLatency(usageOverview?.firstMs ?? null) + '；总耗时 ' + fmtLatency(usageOverview?.totalMs ?? null) + usageRecordNote}
+          title={usageLabel}
+          aria-label={usageLabel}
         >
           <div data-token-monitor-token-layout={balanceAvailable ? 'stacked' : 'inline'} style={{ display: balanceAvailable ? 'grid' : 'flex', gridTemplateRows: balanceAvailable ? DATA_ROWS : undefined, gap: balanceAvailable ? 0 : DISPLAY_GAP, alignItems: 'center', justifyItems: 'center' }}>
             <div style={{ whiteSpace: 'nowrap' }}><span style={{ color: tokenColor(usageOverview?.inputTokens ?? null, '#30c878') }}>↓ {fmtTokens(usageOverview?.inputTokens ?? null)}</span>　<span style={{ color: tokenColor(usageOverview?.outputTokens ?? null, '#9b73ff') }}>↑ {fmtTokens(usageOverview?.outputTokens ?? null)}</span></div>
