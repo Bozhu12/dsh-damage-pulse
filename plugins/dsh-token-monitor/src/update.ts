@@ -1,14 +1,13 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { createRouteGuard } from './http-trust.ts'
+import packageJson from '../../../package.json' with { type: 'json' }
 
 export const UPDATE_STATUS_PATH = '/api/token-monitor/update'
 export const UPDATE_INSTALL_PATH = '/api/token-monitor/update/install'
@@ -17,7 +16,6 @@ export const UPDATE_REPOSITORY = 'wssfk12138/dsh-damage-pulse'
  * than a hand-maintained literal) keeps the runtime manifest version, the
  * update checker and the package metadata in lockstep, so a packed release
  * can never carry a stale manifest version after a version bump. */
-const packageJson = JSON.parse(readFileSync(fileURLToPath(new URL('../../package.json', import.meta.url)), 'utf8')) as { version: string }
 export const CURRENT_RELEASE_VERSION: string = packageJson.version
 const RELEASES_API = `https://api.github.com/repos/${UPDATE_REPOSITORY}/releases/latest`
 const ASSET_HOST = 'github.com'
