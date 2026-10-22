@@ -9,7 +9,7 @@ export const MAX_BALANCE_RESPONSE_BYTES = 262_144
 /** One credential-bearing request path, resolved against a Host-private provider endpoint. */
 export interface BalanceRequest { path: string; method: 'GET' | 'POST'; auth: 'bearer' | 'x-api-key'; body?: string }
 /** Validated script output; credits remain distinct from monetary currencies. */
-export interface ScriptBalance { currency: string; totalBalance: number; grantedBalance: number; toppedUpBalance: number; isAvailable: boolean; windows?: ScriptBalanceWindow[] }
+export interface ScriptBalance { currency: string; totalBalance: number; grantedBalance: number; toppedUpBalance: number; isAvailable: boolean; display?: string; windows?: ScriptBalanceWindow[] }
 /** One rolling usage window (for example a 5-hour or weekly plan quota). */
 export interface ScriptBalanceWindow { label: string; used: number; total: number; resetAt?: number }
 
@@ -143,10 +143,14 @@ export function validateScriptBalance(value: unknown): ScriptBalance {
   const totalBalance = item.totalBalance === undefined
     ? Math.max(windows![0].total - windows![0].used, 0)
     : amount(item.totalBalance)
+  // 通用展示文本：脚本可用一段自定义字符串覆盖「货币符号 + 金额」的默认渲染，
+  // 供百分比、双窗口等非货币形态使用；数值字段照常校验，动画与耗尽判定不受影响。
+  const rawDisplay = typeof item.display === 'string' ? item.display.trim().slice(0, 48) : undefined
+  const display = rawDisplay ? rawDisplay : undefined
   return { currency, totalBalance,
     grantedBalance: item.grantedBalance === undefined ? 0 : amount(item.grantedBalance),
     toppedUpBalance: item.toppedUpBalance === undefined ? 0 : amount(item.toppedUpBalance),
-    isAvailable: item.isAvailable !== false, ...(windows ? { windows } : {}) }
+    isAvailable: item.isAvailable !== false, ...(display ? { display } : {}), ...(windows ? { windows } : {}) }
 }
 
 /** Official adapter seed; an explicitly empty saved script disables it. */

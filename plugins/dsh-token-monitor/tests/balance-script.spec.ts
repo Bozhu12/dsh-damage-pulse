@@ -57,4 +57,13 @@ describe('isolated balance scripts', () => {
     ]) expect(() => validateScriptBalance({ windows: [bad] })).toThrow()
     expect(() => validateScriptBalance({ windows: Array.from({ length: 9 }, () => ({ used: 1, total: 2 })) })).toThrow()
   })
+  it('passes a trimmed generic display string through and keeps numeric fields intact', () => {
+    expect(validateScriptBalance({ currency: 'credits', totalBalance: 73.95, display: '  5h·73% / 7d·95%  ' })).toMatchObject({
+      currency: 'credits', totalBalance: 73.95, display: '5h·73% / 7d·95%',
+    })
+    expect(validateScriptBalance({ currency: 'CNY', totalBalance: 5, display: '   ' }).display).toBeUndefined()
+    expect(validateScriptBalance({ currency: 'CNY', totalBalance: 5, display: 123 }).display).toBeUndefined()
+    const capped = validateScriptBalance({ currency: 'credits', totalBalance: 1, display: 'x'.repeat(80) })
+    expect(capped.display!.length).toBe(48)
+  })
 })

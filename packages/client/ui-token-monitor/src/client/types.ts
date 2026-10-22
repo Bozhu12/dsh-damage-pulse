@@ -61,6 +61,8 @@ export interface BalanceInfo {
   updatedAt: number
   /** 可选的滚动用量窗口（如 GLM Coding Plan 的 5 小时 / 每周积分）。 */
   windows?: BalanceWindow[]
+  /** 可选的通用展示文本：存在时整段替代「货币符号 + 金额」的默认渲染。 */
+  display?: string
 }
 
 /** Host 按北京时间自然日聚合的今日花费。 */

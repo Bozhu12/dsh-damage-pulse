@@ -1642,7 +1642,7 @@ export function BalanceWidget({
               willChange: 'transform',
             }}
           >
-            {currencySymbol(balanceInfo?.currency)}{shownBalance.toFixed(2)}
+            {balanceInfo?.display ?? `${currencySymbol(balanceInfo?.currency)}${shownBalance.toFixed(2)}`}
           </span>
         </span>}
         {balanceAvailable && !!balanceInfo?.windows?.length && <span
