@@ -27,6 +27,7 @@
 | 三层用量展示 | 对话内单次明细、输入区会话累计、全局账户余额悬浮卡 |
 | 历史统计 | 今日、近 7 天、近 30 天和全部历史的消费、请求与 Token 概览 |
 | 余额与峰谷监控 | 官方余额定时校准、实时扣减、充值恢复及峰谷状态提示 |
+| 额度窗口 | GLM Coding Plan 等额度型供应商的 5 小时 / 每周剩余额度，随余额卡显示 |
 | 鲸鱼娘动态反馈 | 待机、眨眼、扣费受击、缓存未命中、余额耗尽与充值复活 |
 | 主动提醒 | 每日预算、峰谷切换、缓存命中异常和鲸鱼娘通知气泡 |
 | 微信通知 | 在详细设置中登录、管理 ClawBot，并接收少女风业务提醒 |
@@ -198,7 +199,7 @@
 
 ## 安装
 
-本仓库从 `0.2.0` 起提供标准 DSH Host + Client 组合包和预编译产物。当前版本为 **4.2.8**：修复余额查询在连接层报错时可能把整个 DSH 宿主进程一起带走的问题。余额请求把 DNS 解析结果钉死给 socket，这一步过去在 node 自己的连接栈里同步交出；当连接返回同步错误（典型场景是休眠唤醒、Wi-Fi 或有线切换、代理 TUN 重启时的「无可用路由」）时，错误在请求挂上监听器之前就以 socket 的 `error` 事件发出，绕过余额轮询自己的退避处理，直接成为宿主的未捕获异常并退出进程。现在钉扎结果改为延后一个 tick 交出，并补上 socket 级兜底，任何连接失败都只让本次余额查询失败并按原有 15 秒短退避重试，不影响宿主与其它功能。`4.2.7` 的 DeepSeek Harness `0.2.1-rc.2` 精确兼容适配与 `4.2.5` 的 TUN / Fake-IP 快退避修复继续保留。
+本仓库从 `0.2.0` 起提供标准 DSH Host + Client 组合包和预编译产物。当前版本为 **4.2.9**：新增内置的 GLM Coding Plan 额度窗口（5 小时 / 每周积分）、自定义余额脚本的 `display` 文本，以及额度型供应商只显示滚动窗口的卡片布局；余额脚本删除后自动回落到内置适配器；插件版本改为以 `package.json` 为单一来源。`4.2.8` 的余额查询连接错误修复、`4.2.7` 的 DeepSeek Harness `0.2.1-rc.2` 精确兼容适配与 `4.2.5` 的 TUN / Fake-IP 快退避修复继续保留。
 
 `4.2.4` 修复余额卡右键菜单继承卡片悬停说明、菜单标记不统一的问题；拖动后的卡片使用窗口内相对位置记忆，窗口和卡片尺寸变化后继续保持位置；修复整体卸载后完整重装仍被旧卸载记录阻止恢复的问题。新增子会话用量聚合与显示修复，移除卡片悬停说明，鲸鱼娘动画默认缩放为 80%（保留已有自定义值）。右键菜单不新增恢复默认位置入口。
 
@@ -219,15 +220,15 @@ dsh plugin --profile web add dsh-damage-pulse
 dsh plugin --profile desktop add dsh-damage-pulse
 ```
 
-**4.2.8 通过 GitHub Release 提供预编译 tgz。** npm 包名 `dsh-damage-pulse` 安装的是 registry 上的最新版本：如果本版本已同步到 npm，用包名即可；如果 registry 尚未更新到 4.2.8，请使用下面的 GitHub Release 预编译 tgz，或通过插件内的 GitHub 更新入口升级。
+**4.2.9 通过 GitHub Release 提供预编译 tgz。** npm 包名 `dsh-damage-pulse` 安装的是 registry 上的最新版本：如果本版本已同步到 npm，用包名即可；如果 registry 尚未更新到 4.2.9，请使用下面的 GitHub Release 预编译 tgz，或通过插件内的 GitHub 更新入口升级。
 
 需要锁定具体版本时改用 GitHub Release 的预编译 tgz。先分清四种「地址」：npm 包名 `dsh-damage-pulse`、Release 里打包好的 `.tgz` 文件、GitHub 仓库页地址、Release 页的 `Source code` 压缩包——后两种是源码，不含打包阶段才生成的 `runtime/`，装出来无法启动：
 
 ```powershell
 # web 端：
-dsh plugin --profile web add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.8/dsh-damage-pulse-4.2.8.tgz
+dsh plugin --profile web add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.9/dsh-damage-pulse-4.2.9.tgz
 # 桌面端：
-dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.8/dsh-damage-pulse-4.2.8.tgz
+dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.9/dsh-damage-pulse-4.2.9.tgz
 ```
 
 > 不要用源码地址安装。`runtime/` 是包内的预编译产物，只在打包阶段由 `scripts/prepare-package-runtime.mjs` 生成且不入库（`.gitignore`），所以 `dsh plugin add github:wssfk12138/dsh-damage-pulse`、GitHub 仓库页地址、Release 页的 `Source code` 压缩包，以及本地 clone 出来的源码目录，装出来的包都只有 `lib/` 没有 `runtime/`，插件启动时会直接失败（现在的报错会点名修复方式，而不是抛出无法定位的 ENOENT），还可能被宿主侧的启动失败隔离直接停用该行。如果你确实要从源码安装，请先在源码目录完成构建与 `runtime/` 生成，再挂载这个构建产物；正确构建过的源码可以正常运行，不能说源码方式绝对不可用。
@@ -267,7 +268,7 @@ dsh --profile desktop
 
 正常升级无需删除配置、清空账本或重新安装，之前主动卸载的模块也不会自动恢复。若安装或启动仍报错，请保留错误内容和当前版本，便于排查。
 
-本次已在 DeepSeek Harness `0.2.0-rc.2` 桌面版验证：4.2.1 通过内置更新升级、模块为 4.2.2 但界面仍旧的安装升级，以及 4.2.3 tgz 全新安装；完整重启后无需手动刷新。4.2.6 另在 `0.2.1-rc.1` 桌面版以实际 tgz 验证加载、合成非零余额与用量、设置保存及完整重启保持、明细和窄窗口；4.2.7 在 `0.2.1-rc.2` 桌面版复验同一条路径。4.2.8 在 `0.2.1-rc.2` 桌面版以注入连接错误复验：同一注入下 4.2.7 复现宿主致命退出，4.2.8 宿主保持运行并回到原有短退避；正常合成链路仍返回非零余额。其他宿主版本未逐一实机验证。
+本次已在 DeepSeek Harness `0.2.0-rc.2` 桌面版验证：4.2.1 通过内置更新升级、模块为 4.2.2 但界面仍旧的安装升级，以及 4.2.3 tgz 全新安装；完整重启后无需手动刷新。4.2.6 另在 `0.2.1-rc.1` 桌面版以实际 tgz 验证加载、合成非零余额与用量、设置保存及完整重启保持、明细和窄窗口；4.2.7 在 `0.2.1-rc.2` 桌面版复验同一条路径。4.2.8 在 `0.2.1-rc.2` 桌面版以注入连接错误复验：同一注入下 4.2.7 复现宿主致命退出，4.2.8 宿主保持运行并回到原有短退避；正常合成链路仍返回非零余额。其他宿主版本未逐一实机验证。4.2.9 在 `0.2.1-rc.2` 桌面版以实际 tgz 复验宿主加载、余额、菜单、用量明细与额度窗口布局；额度窗口使用合成响应，未请求真实 GLM 接口。
 
 ### 4.2.1 升级与恢复
 

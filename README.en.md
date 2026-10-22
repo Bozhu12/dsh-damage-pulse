@@ -253,10 +253,10 @@ If npm has not yet received the current release, install the matching prebuilt t
 
 ~~~powershell
 # Web profile
-dsh plugin --profile web add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.8/dsh-damage-pulse-4.2.8.tgz
+dsh plugin --profile web add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.9/dsh-damage-pulse-4.2.9.tgz
 
 # Desktop profile
-dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.8/dsh-damage-pulse-4.2.8.tgz
+dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.9/dsh-damage-pulse-4.2.9.tgz
 ~~~
 
 The accepted desktop input is the package name or the path to a complete prebuilt <code>.tgz</code>. Extracting a tarball into a folder does not create a valid package installation. If the same version is already present, remove it before reinstalling.
@@ -372,11 +372,11 @@ Package managers may defer very recent releases through a minimum-release-age po
 
 ## Current release and compatibility
 
-Current release: **v4.2.8**.
+Current release: **v4.2.9**.
 
-Version 4.2.8 fixes a balance-query connection failure that could terminate the entire DSH host process after sleep/wake, Wi-Fi or Ethernet changes, or a proxy TUN restart. The balance request now hands off the pinned socket result on a later tick and includes socket-level failure handling. A failed balance query remains a local failure and uses the existing 15-second short backoff.
+Version 4.2.9 adds built-in GLM Coding Plan quota windows (5-hour and weekly credits), a generic `display` override for custom balance scripts, and a quota-only card layout so providers measured in credits show their rolling windows instead of a balance figure. Deleting a balance script now falls back to the built-in adapter for known gateways, and the plugin version is read from `package.json`. The 4.2.8 balance connection fix and the 4.2.7 / 4.2.5 compatibility work are retained.
 
-The release was verified on DeepSeek Harness <code>0.2.1-rc.2</code> desktop with an injected connection error. Under the same test, 4.2.7 reproduced a fatal host exit while 4.2.8 remained running; normal synthetic balance flows still returned a non-zero balance. Other host versions were not individually verified on physical installations.
+Version 4.2.9 was verified on DeepSeek Harness <code>0.2.1-rc.2</code> desktop with the actual tarball: the served client matched the built bundle byte for byte, and balance, menus, usage details and the quota window layout rendered correctly. The quota window was exercised with a synthetic payload; the real GLM endpoint was not queried. Other host versions were not individually verified on physical installations.
 
 The peer range retains compatibility with older DSH releases, but a declared peer range does not mean every version has been tested on a real installation. See [GitHub Releases](https://github.com/wssfk12138/dsh-damage-pulse/releases) for historical changes and downloadable packages.
 
