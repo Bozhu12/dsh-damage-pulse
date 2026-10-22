@@ -39,6 +39,20 @@ export function registerBalanceApi(ctx: Context, scripts: BalanceScriptConfig, r
       catch { send(res, 500, { error: { code: 'READ_FAILED' } }) }
       return
     }
+    if (req.method === 'DELETE') {
+      const revision = Number(new URL(req.url ?? '/', 'http://localhost').searchParams.get('expectedRevision') ?? NaN)
+      try {
+        const removed = await scripts.remove(provider, Number.isSafeInteger(revision) ? revision : -1)
+        registry.invalidate(provider)
+        send(res, 200, removed)
+      } catch (error) {
+        const conflict = error instanceof BalanceScriptConflictError
+        const invalid = error instanceof TypeError
+        send(res, conflict ? 409 : invalid ? 400 : 500,
+          { error: { code: conflict ? 'CONFLICT' : invalid ? 'INVALID_REQUEST' : 'WRITE_FAILED' } })
+      }
+      return
+    }
     if (req.method !== 'PUT') { send(res, 405, { error: { code: 'METHOD_NOT_ALLOWED' } }); return }
     if (req.headers['content-type']?.split(';')[0]?.trim() !== 'application/json') { send(res, 415, { error: { code: 'UNSUPPORTED_MEDIA_TYPE' } }); return }
     let script: string | undefined, enabled: boolean | undefined, revision: number
@@ -115,7 +129,7 @@ export function registerBalanceTools(ctx: Context, scripts: BalanceScriptConfig,
   })), 'dsh-token-monitor: read balance script tool')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'token_monitor_balance_update',
-    description: 'For deepseek-account, source native-account uses the Host native balance service: scripts and endpoint approvals do not apply. Use enabled=true/false (without script) with the observed revision to resume/pause queries. Legacy paused script settings remain paused until explicit enabling. Empty script is supported only as a compatibility pause; nonempty native scripts are rejected. Save a complete balance adapter only when requested by the user. Read token_monitor_balance_get first. A provider that already reports source "built-in" needs no saved script; saving one replaces that shipped adapter, and the replacement endpoint then needs its own approval. Expression format: ({request:{path,method:"GET"|"POST",auth:"bearer"|"x-api-key",body?:string},parse(response){return {currency,totalBalance,grantedBalance?,toppedUpBalance?,isAvailable?}}}). Path must start with one / and contain no origin, query, fragment or credentials. API endpoint and key are Host-private and must never appear in source. Only these string literals may appear: the request path, the values GET/POST/bearer/x-api-key/credits, short codes, field names of at most 14 identifier characters, and a JSON body whose own string values follow the same rule; URLs, credentials, query strings, template substitution and escape sequences are rejected outright. No imports, network, Node globals, async code or secret access. Source limit 32KiB, execution 100ms/8MiB. Empty script disables querying (including a built-in adapter); ordinary invalid edits are saved and pause querying, while refused source is rejected without being stored. A valid edit whose endpoint is not approved yet stays paused until the owner approves that exact path and method in the settings panel; writes are never approved automatically. Historical usage is unchanged. Revision conflict requires rereading, never blind overwrite.',
+    description: 'For deepseek-account, source native-account uses the Host native balance service: scripts and endpoint approvals do not apply. Use enabled=true/false (without script) with the observed revision to resume/pause queries. Legacy paused script settings remain paused until explicit enabling. Empty script is supported only as a compatibility pause; nonempty native scripts are rejected. Save a complete balance adapter only when requested by the user. Read token_monitor_balance_get first. A provider that already reports source "built-in" needs no saved script; saving one replaces that shipped adapter, and the replacement endpoint then needs its own approval. Expression format: ({request:{path,method:"GET"|"POST",auth:"bearer"|"x-api-key",body?:string},parse(response){return {currency,totalBalance,grantedBalance?,toppedUpBalance?,isAvailable?,windows?:[{label,used,total,resetAt?}]}}}). Path must start with one / and contain no origin, query, fragment or credentials. API endpoint and key are Host-private and must never appear in source. Only these string literals may appear: the request path, the values GET/POST/bearer/x-api-key/credits, short codes, field names of at most 14 identifier characters, and a JSON body whose own string values follow the same rule; URLs, credentials, query strings, template substitution and escape sequences are rejected outright. No imports, network, Node globals, async code or secret access. Source limit 32KiB, execution 100ms/8MiB. Empty script disables querying (including a built-in adapter); ordinary invalid edits are saved and pause querying, while refused source is rejected without being stored. A valid edit whose endpoint is not approved yet stays paused until the owner approves that exact path and method in the settings panel; writes are never approved automatically. Historical usage is unchanged. Revision conflict requires rereading, never blind overwrite.',
     parameters: { provider: { type: 'string', required: true }, script: { type: 'string' }, enabled: { type: 'boolean' }, expectedRevision: { type: 'integer', required: true } }, output,
     async execute(args, exec) {
       exec.signal.throwIfAborted(); assertProvider(ctx, args.provider)

@@ -27,7 +27,7 @@ function response(): ServerResponse & { status: number; body: string } {
   } as unknown as ServerResponse & { status: number; body: string }
 }
 
-function setup(rejection: 401 | 403 | undefined, scripts: Pick<BalanceScriptConfig, 'read' | 'update' | 'approve'>) {
+function setup(rejection: 401 | 403 | undefined, scripts: Pick<BalanceScriptConfig, 'read' | 'update' | 'remove' | 'approve'>) {
   const routes = new Map<string, Handler>()
   const registry = { get: vi.fn(), invalidate: vi.fn() } as unknown as BalanceRegistry
   const ctx = {
@@ -153,5 +153,18 @@ describe('balance HTTP security boundary', () => {
       expect(JSON.parse(res.body)).toEqual({ error: { code: 'INVALID_REQUEST' } })
     }
     expect(scripts.approve).not.toHaveBeenCalled()
+  })
+  it('removes a saved script through DELETE and invalidates the query cache', async () => {
+    const scripts = { read: vi.fn().mockResolvedValue({ status: 'valid', source: 'built-in' }), update: vi.fn(), approve: vi.fn(), remove: vi.fn().mockImplementation((_provider: string, revision: number) => Number.isSafeInteger(revision) && revision >= 0 ? Promise.resolve({ status: 'valid', source: 'built-in' }) : Promise.reject(new TypeError('Invalid balance revision'))) }
+    const { handler, registry } = setup(undefined, scripts)
+    const removed = response()
+    await handler(request('DELETE', '/api/token-monitor/balance-script?provider=fast&expectedRevision=3'), removed)
+    expect(removed.status).toBe(200)
+    expect(scripts.remove).toHaveBeenCalledWith('fast', 3)
+    expect(registry.invalidate).toHaveBeenCalledWith('fast')
+    const malformed = response()
+    await handler(request('DELETE', '/api/token-monitor/balance-script?provider=fast&expectedRevision=not-a-number'), malformed)
+    expect(malformed.status).toBe(400)
+    expect(JSON.parse(malformed.body)).toEqual({ error: { code: 'INVALID_REQUEST' } })
   })
 })

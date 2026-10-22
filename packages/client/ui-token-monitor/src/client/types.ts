@@ -41,6 +41,14 @@ export interface TokenCostProjection {
 }
 
 /** Provider balance snapshot; generation metadata prevents cross-credential comparisons. */
+/** 一个滚动用量窗口（如套餐的 5 小时 / 每周积分额度）。 */
+export interface BalanceWindow {
+  label: string
+  used: number
+  total: number
+  resetAt?: number
+}
+
 export interface BalanceInfo {
   provider?: string
   scriptRevision?: number
@@ -51,6 +59,10 @@ export interface BalanceInfo {
   toppedUpBalance: number
   isAvailable: boolean
   updatedAt: number
+  /** 可选的滚动用量窗口（如 GLM Coding Plan 的 5 小时 / 每周积分）。 */
+  windows?: BalanceWindow[]
+  /** 可选的通用展示文本：存在时整段替代「货币符号 + 金额」的默认渲染。 */
+  display?: string
 }
 
 /** Host 按北京时间自然日聚合的今日花费。 */
