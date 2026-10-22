@@ -104,7 +104,7 @@
 - **法定节假日与调休周末**：2026 年 9 月 25 日起，法定节假日整日按空闲时段（谷价）计价；因节假日调休而上班的周六、周日同样整日按空闲时段（谷价）计价，不会因为当天上班而进入高峰时段。只要模型属于 DeepSeek，官方价格表与第三方自定义规则使用同一套峰谷判定。
 - **阶梯与倍率**：按最大上下文 Token 配置阶梯单价，倍率用于中转商的加价系数。
 - **模板与来源**：可选择官方模板预览对比后一键应用；面板显示规则来源、版本与「已自动保存」状态，模型与供应商都可以单独启停。
-- **供应商余额查询脚本**：为第三方供应商写一小段 JavaScript 描述余额接口（请求路径、方法、鉴权方式，以及如何处理返回的 JSON），在沙箱里校验通过后，悬浮卡即可显示该供应商的余额。脚本可返回可选的 `windows` 数组（`label` + `used`/`remaining`/`percent` + `total`，`resetAt` 支持 epoch 毫秒或 ISO 字符串，最多 8 项），悬浮卡会逐窗口显示「剩余/共」；有 `windows` 时 `currency` 与 `totalBalance` 可省略，默认 `credits` 与首个窗口的剩余量。清空脚本并保存即删除该供应商的自定义脚本：已知网关（DeepSeek、fastaitoken、GLM Coding Plan）会自动回落到内置适配器，其余供应商进入「未配置」状态；`DELETE /api/token-monitor/balance-script?provider=<id>&expectedRevision=<n>` 提供同等的删除入口。
+- **供应商余额查询脚本**：为第三方供应商写一小段 JavaScript 描述余额接口（请求路径、方法、鉴权方式，以及如何处理返回的 JSON），在沙箱里校验通过后，悬浮卡即可显示该供应商的余额。脚本可返回可选的 `windows` 数组（`label` + `used`/`remaining`/`percent` + `total`，`resetAt` 支持 epoch 毫秒或 ISO 字符串，最多 8 项），悬浮卡会逐窗口显示「剩余/共」；有 `windows` 时 `currency` 与 `totalBalance` 可省略，默认 `credits` 与首个窗口的剩余量。脚本也可以返回可选的 `display` 字符串（去除首尾空白后最多 48 个字符），存在时悬浮卡用它整段替代「货币符号 + 金额」，适合百分比或组合额度等非货币形态。清空脚本并保存即删除该供应商的自定义脚本：已知网关（DeepSeek、fastaitoken、GLM Coding Plan）会自动回落到内置适配器，其余供应商进入「未配置」状态；`DELETE /api/token-monitor/balance-script?provider=<id>&expectedRevision=<n>` 提供同等的删除入口。
 
 <p align="center">
   <img src="docs/assets/readme/billing-rules.png" alt="计费规则面板：按 provider/model 配置倍率、固定价或峰谷价与高峰时段" width="720">

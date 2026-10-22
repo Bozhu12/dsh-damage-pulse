@@ -133,6 +133,8 @@ export interface BalanceInfo {
   updatedAt: number
   /** 可选的滚动用量窗口（如 GLM Coding Plan 的 5 小时 / 每周积分）。 */
   windows?: BalanceWindow[]
+  /** 可选的通用展示文本；存在时替代「货币符号 + 金额」的默认渲染。 */
+  display?: string
 }
 
 /** 北京时间自然日内的合格 DeepSeek 官方调用花费汇总。 */

@@ -143,7 +143,7 @@ The pricing editor lets users describe how each provider/model combination is bi
 - **Holiday and weekend rules:** public holidays and adjusted weekends use off-peak pricing for the full day.
 - **Tiers and multipliers:** set tier prices by maximum context length and apply a multiplier for relay markups.
 - **Templates and provenance:** preview built-in templates, apply one to the model, and inspect the rule source, version, and autosave state. Models and providers can be enabled independently.
-- **Provider balance scripts:** write a small JavaScript adapter that describes the request path, method, authentication, and JSON response mapping. A sandbox check must pass before the card can display that provider's balance.
+- **Provider balance scripts:** write a small JavaScript adapter that describes the request path, method, authentication, and JSON response mapping. A sandbox check must pass before the card can display that provider's balance. A script may also return an optional `display` string (trimmed, up to 48 characters); when present, the card uses it instead of the currency symbol and amount, which suits percentages or combined quota summaries.
 
 The billing editor and usage window support dragging, eight-direction resizing, maximizing, and position memory. Clicking outside a panel does not close it, so prices can be edited while the conversation remains visible.
 
