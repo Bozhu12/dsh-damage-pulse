@@ -20,6 +20,10 @@ import Agents from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import WebServer from '@deepseek-ai/dsh-host-webserver'
 import { MockAdapter, textResponse, toolCallResponse } from './mock-adapter.ts'
+
+// Each case boots a real profile and installs/removes plugins; the default 5 s
+// budget is too tight when the whole suite runs in parallel.
+vi.setConfig({ testTimeout: 30_000 })
 import type { BillingSnapshot, ModuleReleaseManifest } from '@deepseek-ai/dsh-token-monitor-contract'
 import { apply as applyRuntime, type RuntimeOptions } from '../src/runtime-host.ts'
 
