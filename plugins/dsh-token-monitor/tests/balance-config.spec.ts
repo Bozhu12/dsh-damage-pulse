@@ -147,6 +147,21 @@ describe('provider script persistence', () => {
     expect(await cleared.read('fast')).toMatchObject({ status: 'unconfigured', script: '' })
   })
 
+  it('removes a saved script so the shipped adapter resumes, while an emptied script only switches off', async () => {
+    const config = await boot({}, fastai)
+    expect(await config.update('fast', adapter('/v1/usage'), 0)).toMatchObject({ revision: 1 })
+    expect((await config.read('fast')).source).toBeUndefined()
+    expect(await config.remove('fast', 1)).toMatchObject({ status: 'valid', source: 'built-in', adapter: 'fastaitoken', revision: 0, script: fastai.script })
+    // Removal is idempotent once the entry is gone: any revision resolves.
+    expect(await config.remove('fast', 0)).toMatchObject({ status: 'valid', source: 'built-in' })
+    expect(await config.remove('fast', 7)).toMatchObject({ status: 'valid', source: 'built-in' })
+    await expect(config.remove('deepseek-account', 0)).rejects.toThrow()
+    // An emptied script stays the explicit off switch; it never resumes the shipped adapter.
+    const emptied = await boot({}, fastai)
+    expect(await emptied.update('fast', '', 0)).toMatchObject({ status: 'unconfigured' })
+    expect((await emptied.read('fast')).source).toBeUndefined()
+  })
+
   it('allows keyless auth declarations and retains ordinary invalid source', async () => {
     const config = await boot()
     const keyless = '({ request: { path: "/v1/usage", method: "GET", auth: "x-api-key" }, parse() { return {} } })'

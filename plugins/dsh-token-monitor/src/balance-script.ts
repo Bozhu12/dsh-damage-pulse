@@ -9,24 +9,55 @@ export const MAX_BALANCE_RESPONSE_BYTES = 262_144
 /** One credential-bearing request path, resolved against a Host-private provider endpoint. */
 export interface BalanceRequest { path: string; method: 'GET' | 'POST'; auth: 'bearer' | 'x-api-key'; body?: string }
 /** Validated script output; credits remain distinct from monetary currencies. */
-export interface ScriptBalance { currency: string; totalBalance: number; grantedBalance: number; toppedUpBalance: number; isAvailable: boolean }
+export interface ScriptBalance { currency: string; totalBalance: number; grantedBalance: number; toppedUpBalance: number; isAvailable: boolean; windows?: ScriptBalanceWindow[] }
 /** One rolling usage window (for example a 5-hour or weekly plan quota). */
 export interface ScriptBalanceWindow { label: string; used: number; total: number; resetAt?: number }
 
 const MAX_BALANCE_WINDOWS = 8
 
+/** Coerce one flexible window figure: plain or decimal-string numbers only. */
+function windowNumber(value: unknown, message: string): number | undefined {
+  if (value === undefined) return undefined
+  const result = amount(value)
+  if (result < 0) throw new Error(message)
+  return result
+}
+
+/** Accept an epoch-milliseconds number or an ISO-8601 date string. */
+function coerceResetAt(value: unknown): number | undefined {
+  if (value === undefined) return undefined
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Date.parse(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  throw new Error('Invalid balance window reset time')
+}
+
 function balanceWindows(value: unknown): ScriptBalanceWindow[] | undefined {
   if (value === undefined) return undefined
   if (!Array.isArray(value) || value.length > MAX_BALANCE_WINDOWS) throw new Error('Invalid balance windows')
-  return value.map(item => {
+  return value.map((item, index) => {
     const entry = object(item)
-    if (typeof entry.label !== 'string' || entry.label.length > 16) throw new Error('Invalid balance window label')
-    if (typeof entry.used !== 'number' || !Number.isFinite(entry.used) || entry.used < 0) throw new Error('Invalid balance window usage')
-    if (typeof entry.total !== 'number' || !Number.isFinite(entry.total) || entry.total < 0) throw new Error('Invalid balance window total')
-    if (entry.resetAt !== undefined && (typeof entry.resetAt !== 'number' || !Number.isFinite(entry.resetAt))) throw new Error('Invalid balance window reset time')
-    return entry.resetAt === undefined
-      ? { label: entry.label, used: entry.used, total: entry.total }
-      : { label: entry.label, used: entry.used, total: entry.total, resetAt: entry.resetAt }
+    // Unknown extra fields are ignored rather than rejected: adapters may
+    // carry provider metadata alongside the window figures.
+    const label = entry.label === undefined ? `Window ${index + 1}` : entry.label
+    if (typeof label !== 'string' || !label.trim() || label.length > 16) throw new Error('Invalid balance window label')
+    const total = windowNumber(entry.total, 'Invalid balance window total')
+    if (total === undefined) throw new Error('Invalid balance window total')
+    const percent = windowNumber(entry.percent, 'Invalid balance window percent')
+    if (percent !== undefined && percent > 100) throw new Error('Invalid balance window percent')
+    let used: number
+    if (entry.used !== undefined) used = windowNumber(entry.used, 'Invalid balance window usage') ?? Number.NaN
+    else if (entry.remaining !== undefined) used = Math.max(total - (windowNumber(entry.remaining, 'Invalid balance window remaining') ?? -1), 0)
+    else if (percent !== undefined) used = total * percent / 100
+    else throw new Error('Invalid balance window usage')
+    if (!Number.isFinite(used) || used < 0) throw new Error('Invalid balance window usage')
+    const rounded = Math.round(used * 100) / 100
+    const resetAt = coerceResetAt(entry.resetAt)
+    return resetAt === undefined
+      ? { label, used: rounded, total }
+      : { label, used: rounded, total, resetAt }
   })
 }
 
@@ -94,15 +125,25 @@ function amount(value: unknown): number {
 }
 
 /** Validate amounts without coercing credits into a monetary currency.
+ *
+ * Flexible shape: when valid `windows` are present, `currency` and
+ * `totalBalance` may be omitted (they default to `credits` and the primary
+ * window's remaining credits), so a window-only script stays short.
  * @param value Untrusted adapter result.
  * @returns Bounded balance fields for the UI.
  */
 export function validateScriptBalance(value: unknown): ScriptBalance {
   const item = object(value)
-  if (typeof item.currency !== 'string' || !/^(?:[A-Z]{3}|credits)$/.test(item.currency)) throw new Error('Balance currency must be an ISO code or credits')
-  if (item.isAvailable !== undefined && typeof item.isAvailable !== 'boolean') throw new Error('Invalid balance availability')
   const windows = balanceWindows(item.windows)
-  return { currency: item.currency, totalBalance: amount(item.totalBalance),
+  const hasWindows = !!windows?.length
+  const currency = item.currency === undefined ? (hasWindows ? 'credits' : undefined) : item.currency
+  if (typeof currency !== 'string' || !/^(?:[A-Z]{3}|credits)$/.test(currency)) throw new Error('Balance currency must be an ISO code or credits')
+  if (item.isAvailable !== undefined && typeof item.isAvailable !== 'boolean') throw new Error('Invalid balance availability')
+  if (item.totalBalance === undefined && !hasWindows) throw new Error('Balance amount must be a decimal number')
+  const totalBalance = item.totalBalance === undefined
+    ? Math.max(windows![0].total - windows![0].used, 0)
+    : amount(item.totalBalance)
+  return { currency, totalBalance,
     grantedBalance: item.grantedBalance === undefined ? 0 : amount(item.grantedBalance),
     toppedUpBalance: item.toppedUpBalance === undefined ? 0 : amount(item.toppedUpBalance),
     isAvailable: item.isAvailable !== false, ...(windows ? { windows } : {}) }

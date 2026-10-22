@@ -30,4 +30,31 @@ describe('isolated balance scripts', () => {
     expect(publicBalanceAddress('1.1.1.1')).toBe(true)
     expect(publicBalanceAddress('2606:4700:4700::1111')).toBe(true)
   })
+  it('accepts flexible window shapes: remaining, percent, decimal strings, ISO resetAt and auto labels', () => {
+    expect(validateScriptBalance({ windows: [
+      { label: '5h', remaining: 165, total: 2000 },
+      { used: '300', total: '1000', resetAt: '2026-10-24T08:35:03Z' },
+      { percent: 40, total: 500 },
+      { percent: '25', total: '400', label: 'w4', extra: 'metadata' },
+    ] })).toMatchObject({
+      currency: 'credits',
+      totalBalance: 165,
+      windows: [
+        { label: '5h', used: 1835, total: 2000 },
+        { label: 'Window 2', used: 300, total: 1000, resetAt: Date.parse('2026-10-24T08:35:03Z') },
+        { label: 'Window 3', used: 200, total: 500 },
+        { label: 'w4', used: 100, total: 400 },
+      ],
+    })
+    expect(validateScriptBalance({ windows: [{ used: 1, total: 2 }] })).toMatchObject({ currency: 'credits', totalBalance: 1, windows: [{ label: 'Window 1', used: 1, total: 2 }] })
+    for (const bad of [
+      { remaining: 1 },
+      { used: -1, total: 2 },
+      { percent: 120, total: 2 },
+      { used: 1 },
+      { resetAt: 'not-a-date', used: 1, total: 2 },
+      { label: 'x'.repeat(17), used: 1, total: 2 },
+    ]) expect(() => validateScriptBalance({ windows: [bad] })).toThrow()
+    expect(() => validateScriptBalance({ windows: Array.from({ length: 9 }, () => ({ used: 1, total: 2 })) })).toThrow()
+  })
 })

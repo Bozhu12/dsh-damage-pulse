@@ -164,6 +164,66 @@ export class BalanceScriptConfig {
     throw new BalanceScriptConflictError()
   }
 
+  /** Remove one provider's saved script so a Host-shipped adapter (if any) resumes.
+   * @param provider Exact configured provider id.
+   * @param expectedRevision Last observed provider-local revision.
+   * @returns Post-clear state, resolved through the built-in adapter when one exists.
+   */
+  private async clear(provider: string, expectedRevision: number): Promise<BalanceScriptSnapshot> {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const state = this.store.get()
+      const current = state.balanceScripts?.[provider]
+      if (current === undefined) {
+        this.validations.delete(provider)
+        return await this.read(provider)
+      }
+      if ((current?.revision ?? 0) !== expectedRevision) throw new BalanceScriptConflictError()
+      try {
+        // An undefined patch value deletes the provider's entry (mergeProviderMap).
+        await this.store.update({ balanceScripts: { [provider]: undefined as unknown as BalanceScriptEntry } }, state.revision)
+        this.validations.delete(provider)
+        return await this.read(provider)
+      } catch (error) {
+        if (error instanceof PluginStoreConflictError && attempt < 3) continue
+        throw error
+      }
+    }
+    throw new BalanceScriptConflictError()
+  }
+
+  /** Remove one provider's saved script so a Host-shipped adapter (if any) resumes.
+   *
+   * Saving text is the owner's explicit choice and always wins over shipped
+   * adapters, so removal is the one way back: an emptied script merely
+   * switches querying off, it does not restore the shipped adapter.
+   * @param provider Exact configured provider id.
+   * @param expectedRevision Last observed provider-local revision.
+   * @returns Post-removal state, resolved through the built-in adapter when one exists.
+   */
+  async remove(provider: string, expectedRevision: number): Promise<BalanceScriptSnapshot> {
+    if (provider === 'deepseek-account') throw new TypeError('The native account query has no saved script to remove')
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new TypeError('Invalid balance revision')
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const state = this.store.get()
+      const current = state.balanceScripts?.[provider]
+      if (current === undefined) {
+        this.validations.delete(provider)
+        return await this.read(provider)
+      }
+      if ((current?.revision ?? 0) !== expectedRevision) throw new BalanceScriptConflictError()
+      try {
+        // An undefined patch value deletes the provider's entry (mergeProviderMap).
+        await this.store.update({ balanceScripts: { [provider]: undefined as unknown as BalanceScriptEntry } }, state.revision)
+        this.validations.delete(provider)
+        return await this.read(provider)
+      } catch (error) {
+        if (error instanceof PluginStoreConflictError && attempt < 3) continue
+        throw error
+      }
+    }
+    throw new BalanceScriptConflictError()
+  }
+
   /** Persist a native-account query switch using the same provider-local revision. */
   async updateNative(provider: string, enabled: boolean, expectedRevision: number): Promise<BalanceScriptSnapshot> {
     if (provider !== 'deepseek-account' || typeof enabled !== 'boolean'

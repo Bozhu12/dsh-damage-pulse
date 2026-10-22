@@ -39,6 +39,20 @@ export function registerBalanceApi(ctx: Context, scripts: BalanceScriptConfig, r
       catch { send(res, 500, { error: { code: 'READ_FAILED' } }) }
       return
     }
+    if (req.method === 'DELETE') {
+      const revision = Number(new URL(req.url ?? '/', 'http://localhost').searchParams.get('expectedRevision') ?? NaN)
+      try {
+        const removed = await scripts.remove(provider, Number.isSafeInteger(revision) ? revision : -1)
+        registry.invalidate(provider)
+        send(res, 200, removed)
+      } catch (error) {
+        const conflict = error instanceof BalanceScriptConflictError
+        const invalid = error instanceof TypeError
+        send(res, conflict ? 409 : invalid ? 400 : 500,
+          { error: { code: conflict ? 'CONFLICT' : invalid ? 'INVALID_REQUEST' : 'WRITE_FAILED' } })
+      }
+      return
+    }
     if (req.method !== 'PUT') { send(res, 405, { error: { code: 'METHOD_NOT_ALLOWED' } }); return }
     if (req.headers['content-type']?.split(';')[0]?.trim() !== 'application/json') { send(res, 415, { error: { code: 'UNSUPPORTED_MEDIA_TYPE' } }); return }
     let script: string | undefined, enabled: boolean | undefined, revision: number

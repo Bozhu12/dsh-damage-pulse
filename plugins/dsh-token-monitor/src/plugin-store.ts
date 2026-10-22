@@ -104,7 +104,14 @@ function merge(current: TokenMonitorStoreState, patch: Partial<TokenMonitorStore
 }
 
 function mergeProviderMap<T>(current: Record<string, T> | undefined, patch: Record<string, T>): Record<string, T> {
-  return { ...(current ?? {}), ...patch }
+  const next: Record<string, T> = { ...(current ?? {}) }
+  for (const [key, value] of Object.entries(patch)) {
+    // An undefined patch value deletes the provider's entry, so a cleared
+    // script can fall back to the Host-shipped adapter instead of lingering.
+    if (value === undefined) delete next[key]
+    else next[key] = value
+  }
+  return next
 }
 
 /** 写入前的边界校验；与旧 settings 的 `validate` 保持一致。 */
