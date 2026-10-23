@@ -75,6 +75,43 @@ it('切到 Plan 额度后渲染供应商、窗口名、已用百分比与下次�
   expect(screen.getAllByRole('progressbar').map(node => node.getAttribute('aria-label'))).toEqual(['5 小时', '每周', '每月'])
 })
 
+it('三家供应商的百分比与进度条统一按剩余口径渲染', async () => {
+  // Host 归一化层保证 usedPercent 恒为「已用份额」：
+  // GLM 取接口 percentage（实测=已用）、Kimi 由 used/limit 折算、
+  // MiniMax 由 100−*_remaining_percent 折算（实测该字段是剩余）。
+  // 这里用三家各一窗口的快照锁死客户端渲染：百分比文本、条宽、valuenow 全为剩余。
+  const snapshot: PlanQuotaSnapshot = {
+    updatedAt: now,
+    providers: [
+      { provider: 'zai-coding-cn', label: 'GLM Coding Plan', status: 'ok', updatedAt: now,
+        windows: [{ kind: '5h', label: 'GLM', usedPercent: 74, used: null, total: null, resetAt: reset5h }] },
+      { provider: 'kimi-coding', label: 'Kimi Coding Plan', status: 'ok', updatedAt: now,
+        windows: [{ kind: '5h', label: 'Kimi', usedPercent: 25, used: 30, total: 120, resetAt: resetWeek }] },
+      { provider: 'minimax-cn', label: 'MiniMax M Plan', status: 'ok', updatedAt: now,
+        windows: [{ kind: 'week', label: 'MiniMax', usedPercent: 100, used: null, total: null, resetAt: resetWeek }] },
+    ],
+  }
+  mount(async url => ok(String(url).includes('plan-quotas') ? snapshot : summary))
+  await flush()
+  fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
+  await flush()
+  // 窗口顺序固定 5h → week → month：GLM、Kimi、MiniMax 各占一档。
+  const bars = screen.getAllByRole('progressbar')
+  expect(bars).toHaveLength(3)
+  const [glmBar, kimiBar, miniMaxBar] = bars
+  // GLM：已用 74% → 剩余 26.0%，条宽 26%。
+  expect(screen.getByText('26.0%')).toBeTruthy()
+  expect(glmBar!.getAttribute('aria-valuenow')).toBe('26')
+  expect((glmBar!.firstElementChild as HTMLElement).style.width).toBe('26%')
+  // Kimi：已用 25% → 剩余 75.0%。
+  expect(screen.getByText('75.0%')).toBeTruthy()
+  expect(kimiBar!.getAttribute('aria-valuenow')).toBe('75')
+  // MiniMax：已用 100% → 红字「已耗尽」，不显示百分比。
+  expect(screen.getByText('已耗尽')).toBeTruthy()
+  expect(miniMaxBar!.getAttribute('aria-valuenow')).toBe('0')
+  expect(screen.queryByText('0.0%')).toBeNull()
+})
+
 it('额度用尽时以红字「已耗尽」取代数值区', async () => {
   const snapshot: PlanQuotaSnapshot = {
     updatedAt: now,
