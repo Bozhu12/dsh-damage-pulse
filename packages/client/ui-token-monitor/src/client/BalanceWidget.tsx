@@ -38,6 +38,7 @@ import { applyDebitToDisplay, comparableBalances } from './balanceMath.ts'
 import { compactTokens, latencyTone } from './detail-model.ts'
 import { isOfficialRoute } from './providerFamily.ts'
 import { overlayTopMargin } from './window-frame.tsx'
+import { useEscapeDismiss } from './useEscapeDismiss.ts'
 
 const UsageDetailsWindow = lazy(() => import('./UsageDetailsWindow.tsx').then(module => ({ default: module.UsageDetailsWindow })))
 const TokenMonitorSettingsPanel = lazy(() => import('./TokenMonitorSettingsPanel.tsx').then(module => ({ default: module.TokenMonitorSettingsPanel })))
@@ -536,6 +537,9 @@ export function BalanceWidget({
       top: clamp(event.clientY, minTop, Math.max(minTop, window.innerHeight - menuHeight - 4)),
     })
   }, [])
+
+  // 全局 ESC：焦点不在卡片/菜单内也能关闭右键菜单。
+  useEscapeDismiss(contextMenu !== null, () => { setContextMenu(null) })
 
   const toggleUsageOverview = useCallback(() => {
     setShowUsageOverview((visible) => {

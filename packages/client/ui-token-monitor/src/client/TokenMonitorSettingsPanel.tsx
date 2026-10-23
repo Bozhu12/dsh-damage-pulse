@@ -18,6 +18,7 @@ import {
 } from '@deepseek-ai/dsh-token-monitor-contract'
 import { PRODUCT_NAME } from './branding.ts'
 import { hostCompatHint, type HostCompatApi, type HostCompatStatus } from './hostCompatApi.ts'
+import { useEscapeDismiss } from './useEscapeDismiss.ts'
 import { displayProviderId } from './providerFamily.ts'
 import {
   WechatConnectionApiError,
@@ -409,6 +410,12 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
     await flushSaves()
     if (!pendingRef.current) props.onClose()
   }
+
+  // 全局 ESC：焦点不在面板内也能关闭；有断开确认时先收起确认框。
+  useEscapeDismiss(true, () => {
+    if (disconnectConfirmation) setDisconnectConfirmation(false)
+    else void requestClose()
+  })
 
   const selectProvider = async (nextProvider: string) => {
     if (!props.loadProvider || switchingRef.current || !commitNumberInputs()) return

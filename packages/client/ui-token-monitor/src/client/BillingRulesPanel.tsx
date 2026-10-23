@@ -13,6 +13,7 @@ import { readBillingSnapshot as readSnapshot, type BillingEventsState } from './
 import { BillingSourceDetails } from './BillingSourceDetails.tsx'
 import { BillingTemplatePreview } from './BillingTemplatePreview.tsx'
 import { BalanceScriptEditor } from './BalanceScriptEditor.tsx'
+import { useEscapeDismiss } from './useEscapeDismiss.ts'
 import { FloatingResizeHandles, useFloatingWindow } from './window-frame.tsx'
 
 type CatalogModel = { provider: string; providerName?: string | undefined; model: string; name?: string | undefined }
@@ -217,6 +218,17 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
   const dirty = useRef(false)
   const liveSnapshot = useRef<BillingSnapshot>()
   const pendingSnapshot = useRef<BillingSnapshot>()
+
+  // 全局 ESC：焦点不在面板内也能关闭。优先收起供应商下拉，正在保存或
+  // 还有未保存修改时不关闭（与关闭按钮同一条件，避免丢掉编辑）。
+  useEscapeDismiss(true, () => {
+    if (providerOpen) {
+      setProviderOpen(false)
+      providerMenu.current?.querySelector('button')?.focus()
+      return
+    }
+    if (!(saving || dirty.current || scriptBusy)) onClose()
+  })
   const providerMenu = useRef<HTMLDivElement>(null)
   const savePending = useRef(false)
   const catalogGeneration = useRef(0)

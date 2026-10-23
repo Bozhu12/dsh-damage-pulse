@@ -9,6 +9,7 @@ import { columnsKey, defaultColumns, detailColumns, readColumns, type DetailColu
 import styles from './UsageDetailsWindow.module.css'
 const FeeExplanation = lazy(() => import('./FeeExplanation.tsx').then(module => ({ default: module.FeeExplanation })))
 import { UsageOverview } from './UsageOverview.tsx'
+import { useEscapeDismiss } from './useEscapeDismiss.ts'
 import type { UsageSummaryRange } from './types.ts'
 import { useUsageRefresh, usageSummaryUrl } from './useUsageRefresh.ts'
 
@@ -110,6 +111,20 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
     return () => { window.removeEventListener('pointerdown', dismiss, true) }
   }, [columnsOpen])
   const clearFeeHide = () => { if (feeHideTimer.current) clearTimeout(feeHideTimer.current) }
+  // 全局 ESC：焦点不在窗口内也能关闭。优先级与窗口内按键一致：
+  // 费用浮层（焦点还给触发按钮）→ 列设置菜单 → 关闭窗口。
+  useEscapeDismiss(true, () => {
+    if (feePopover) {
+      const anchor = feePopover.anchor
+      clearFeeHide()
+      setFeePopover(undefined)
+      // 还原焦点时抑制按钮的 onFocus，否则浮层会立即重新打开。
+      restoringFeeFocus.current = true
+      anchor.focus()
+      restoringFeeFocus.current = false
+    } else if (columnsOpen) { setColumnsOpen(false); columnsAnchor.current?.querySelector('button')?.focus() }
+    else onClose()
+  })
   const scheduleFeeHide = () => {
     clearFeeHide()
     feeHideTimer.current = setTimeout(() => { setFeePopover(current => current?.pinned ? current : undefined) }, 180)
