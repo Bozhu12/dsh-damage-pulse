@@ -173,8 +173,9 @@ function QuotaWindow({ window, now, t }: WindowRowProps) {
     ? t('planQuotaUsed', { used: formatAmount(window.used), total: formatAmount(window.total) })
     : undefined
   const reset = window.resetAt === undefined ? t('planQuotaResetUnknown') : beijingDateTime(window.resetAt).replace('T', ' ')
-  // 进度条按「剩余额度」渲染（契合越用越少的计量直觉）：满条=充足，空条=用尽。
-  // 剩余 <10% 红色告警、<30% 黄色提醒；数值文本仍以「已用」表述。
+  // 进度条与百分比都按「剩余额度」表述（契合越用越少的计量直觉）：
+  // 满条=充足，空条=用尽；剩余 <10% 红色告警、<30% 黄色提醒。
+  // 用量文本保留「已用 X / Y」的绝对量，便于对账。
   const remaining = percent === null ? null : 100 - percent
   const level = remaining === null ? 'none' : remaining <= 10 ? 'high' : remaining <= 30 ? 'warn' : 'normal'
   // 已用满时以红字「已耗尽」取代整个数值区，不再展示 100/100 这类读数。
@@ -188,7 +189,7 @@ function QuotaWindow({ window, now, t }: WindowRowProps) {
         ? <span className={styles.windowExhausted} role="status">{t('planQuotaExhausted')}</span>
         : <span className={styles.windowValues}>
           {usage && <span className={styles.windowUsage}>{usage}</span>}
-          <span className={styles.windowPercent}>{percent === null ? t('unknown') : percent.toFixed(1) + '%'}</span>
+          <span className={styles.windowPercent}>{remaining === null ? t('unknown') : remaining.toFixed(1) + '%'}</span>
         </span>}
     </div>
     <div className={styles.bar} role="progressbar" aria-label={name} aria-valuemin={0} aria-valuemax={100}

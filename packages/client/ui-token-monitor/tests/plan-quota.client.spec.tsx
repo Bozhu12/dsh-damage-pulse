@@ -65,7 +65,8 @@ it('切到 Plan 额度后渲染供应商、窗口名、已用百分比与下次�
   expect(screen.getByText('zhipuai')).toBeTruthy()
   expect(screen.getByText('套餐 pro')).toBeTruthy()
   expect(screen.getByText('5 小时')).toBeTruthy()
-  expect(screen.getByText('12.5%')).toBeTruthy()
+  // 右侧百分比与进度条同为剩余口径：已用 12.5% → 剩余 87.5%。
+  expect(screen.getByText('87.5%')).toBeTruthy()
   expect(screen.getByText('已用 25 / 200')).toBeTruthy()
   expect(screen.getByText('2026-10-23 19:13:00')).toBeTruthy()
   expect(screen.getByText('还剩 2 小时 13 分')).toBeTruthy()
@@ -147,7 +148,8 @@ it('单个供应商查询失败时只提示该供应商，其它供应商照常�
   expect(screen.getByText('Moonshot Plan')).toBeTruthy()
   expect(screen.getByText('额度查询失败')).toBeTruthy()
   expect(screen.getByText('GLM Coding Plan')).toBeTruthy()
-  expect(screen.getByText('12.5%')).toBeTruthy()
+  // 右侧百分比与进度条同为剩余口径：已用 12.5% → 剩余 87.5%。
+  expect(screen.getByText('87.5%')).toBeTruthy()
 })
 
 it('没有可用额度时显示空态', async () => {
