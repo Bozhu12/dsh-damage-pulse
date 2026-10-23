@@ -71,6 +71,24 @@ it('deactivates a layer without touching the others', () => {
   expect(second).not.toHaveBeenCalled()
 })
 
+it('yields Escape to a host modal covering the plugin layer', async () => {
+  // 复现 review 第 3 条：宿主 Modal（aria-modal）压在插件弹层上时，
+  // 一次 Esc 只归宿主，插件层保持原样；Modal 关闭后插件层恢复响应。
+  const onEscape = vi.fn()
+  const hostListener = vi.fn()
+  document.addEventListener('keydown', hostListener)
+  const view = render(<><Layer active onEscape={onEscape} /></>)
+  // 宿主 Modal 的稳定特征：role=dialog 且 aria-modal=true（插件弹层一律 false）。
+  view.rerender(<><Layer active onEscape={onEscape} /><div role="dialog" aria-modal="true" data-host-modal /></>)
+  esc(); await flush()
+  expect(onEscape).not.toHaveBeenCalled()
+  expect(hostListener).toHaveBeenCalledTimes(1)
+  view.rerender(<><Layer active onEscape={onEscape} /></>)
+  esc(); await flush()
+  expect(onEscape).toHaveBeenCalledTimes(1)
+  document.removeEventListener('keydown', hostListener)
+})
+
 it('ignores keys other than Escape', () => {
   const onEscape = vi.fn()
   render(<Layer active onEscape={onEscape} />)

@@ -418,3 +418,15 @@ it('saves separate period tiers and clock selections automatically without a sav
   expect(saved.offPeakTiers?.[0]?.output).toBe(3)
   expect(saved.tiers?.[0]?.output).toBe(6)
 })
+
+it('lets Escape reach document listeners of the host while closing its own layer', async () => {
+  // 复现 review 第 1 条（回归）：计费面板内按 Esc，宿主 document 监听必须仍被调用。
+  const hostListener = vi.fn()
+  document.addEventListener('keydown', hostListener)
+  const { close } = mount()
+  await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy())
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+  await waitFor(() => expect(hostListener).toHaveBeenCalledTimes(1))
+  expect(close).toHaveBeenCalledTimes(1)
+  document.removeEventListener('keydown', hostListener)
+})

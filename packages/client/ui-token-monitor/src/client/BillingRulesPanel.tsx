@@ -428,8 +428,8 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
 
   return createPortal(<div role="dialog" aria-modal="false" aria-label={t('billingTitle')} className={css.panel}
     style={{ left: frame.shown.x, top: frame.shown.y, width: frame.shown.width, height: frame.shown.height }}
-    onPointerDown={(event) => { event.stopPropagation() }}
-    onKeyDown={(event) => { event.stopPropagation() }}>
+    onPointerDown={(event) => { event.stopPropagation() }}>
+    {/* 面板 portal 到 body，键盘事件不经过悬浮卡；拦截全部按键会挡住宿主 document 监听，故不设 onKeyDown。 */}
     <header className={css.header}
       onPointerDown={(event) => { frame.startDrag(event) }} onPointerMove={frame.moveDrag}
       onPointerUp={frame.endDrag} onPointerCancel={frame.endDrag}

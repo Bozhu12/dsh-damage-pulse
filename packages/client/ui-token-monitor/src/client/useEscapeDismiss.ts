@@ -37,10 +37,18 @@ function onKeydown(event: KeyboardEvent): void {
   if (event.key !== 'Escape') return
   const top = layers[layers.length - 1]
   if (!top) return
+  // 宿主模态（aria-modal 的对话框，如模块管理的 Modal）盖在插件弹层上时，
+  // Esc 归宿主：只关宿主弹层，插件层保持原样，避免一次按键连关两层。
+  if (hostModalPresent()) return
   // 只阻止默认行为；传播必须放行，宿主 document 上的 Modal/Menu 监听
   // 依赖同一个事件才能关闭自己的弹层。
   event.preventDefault()
   top.onEscape()
+}
+
+/** 宿主模态对话框的稳定特征：插件弹层一律是 aria-modal="false"。 */
+function hostModalPresent(): boolean {
+  return document.querySelector('[role="dialog"][aria-modal="true"]') !== null
 }
 
 function ensureListener(): void {

@@ -223,6 +223,8 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
     onPointerDown={(event) => { event.stopPropagation() }}
     onPointerMove={(event) => { event.stopPropagation() }} onPointerUp={(event) => { event.stopPropagation() }}
     onContextMenu={(event) =>{  event.stopPropagation() }} onKeyDown={(event) => {
+      // Esc 必须继续传播：宿主 document 上的 Modal/Menu 依赖同一个按键关闭自己。
+      if (event.key === 'Escape') return
       if (!(event.target as HTMLElement).closest('[role=menu]')) event.stopPropagation()
       if (event.key === 'Tab') setColumnsOpen(false)
     }}>
