@@ -19,6 +19,9 @@ import {
 import { PRODUCT_NAME } from './branding.ts'
 import { hostCompatHint, type HostCompatApi, type HostCompatStatus } from './hostCompatApi.ts'
 import { useEscapeDismiss } from './useEscapeDismiss.ts'
+
+/** 设置面板挂在 BalanceWidget 的 1200 层遮罩内（宿主 Modal 是 1000）。 */
+const SETTINGS_Z_INDEX = 1200
 import { displayProviderId } from './providerFamily.ts'
 import {
   WechatConnectionApiError,
@@ -415,7 +418,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
   useEscapeDismiss(true, () => {
     if (disconnectConfirmation) setDisconnectConfirmation(false)
     else void requestClose()
-  })
+  }, { zIndex: SETTINGS_Z_INDEX })
 
   const selectProvider = async (nextProvider: string) => {
     if (!props.loadProvider || switchingRef.current || !commitNumberInputs()) return

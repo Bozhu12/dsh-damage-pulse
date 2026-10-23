@@ -14,6 +14,9 @@ import { BillingSourceDetails } from './BillingSourceDetails.tsx'
 import { BillingTemplatePreview } from './BillingTemplatePreview.tsx'
 import { BalanceScriptEditor } from './BalanceScriptEditor.tsx'
 import { useEscapeDismiss } from './useEscapeDismiss.ts'
+
+/** 与 BillingRulesPanel.module.css 的 .panel z-index 保持一致（宿主 Modal 是 1000）。 */
+const PANEL_Z_INDEX = 1300
 import { FloatingResizeHandles, useFloatingWindow } from './window-frame.tsx'
 
 type CatalogModel = { provider: string; providerName?: string | undefined; model: string; name?: string | undefined }
@@ -228,7 +231,7 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
       return
     }
     if (!(saving || dirty.current || scriptBusy)) onClose()
-  })
+  }, { zIndex: PANEL_Z_INDEX })
   const providerMenu = useRef<HTMLDivElement>(null)
   const savePending = useRef(false)
   const catalogGeneration = useRef(0)
@@ -457,9 +460,9 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
     <fieldset className={css.toolbar} disabled={!draft}>
       <div ref={providerMenu} className={css.providerMenu} onKeyDown={(event) => {
         if (event.key === 'Escape') {
+          // 收起下拉但放行传播：宿主 document 上的弹层监听依赖同一个按键。
           setProviderOpen(false)
           providerMenu.current?.querySelector('button')?.focus()
-          event.stopPropagation()
         }
       }}>
         <Button className={css.providerTrigger} aria-expanded={providerOpen} aria-haspopup="listbox"

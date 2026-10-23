@@ -523,7 +523,10 @@ export function BalanceWidget({
     notificationSeeded.current = false
   }, [scopeKey, billingInstalled, petInstalled, notifyInstalled])
 
-  /** 右键打开余额显示设置菜单，并限制菜单不超出视口。 */
+  /** 右键菜单的内联层级（见 onContextMenu 渲染处的 zIndex）。 */
+const CONTEXT_MENU_Z_INDEX = 1100
+
+/** 右键打开余额显示设置菜单，并限制菜单不超出视口。 */
   const onContextMenu = useCallback((event: React.MouseEvent) => {
     event.preventDefault()
     dragStart.current = null
@@ -539,7 +542,7 @@ export function BalanceWidget({
   }, [])
 
   // 全局 ESC：焦点不在卡片/菜单内也能关闭右键菜单。
-  useEscapeDismiss(contextMenu !== null, () => { setContextMenu(null) })
+  useEscapeDismiss(contextMenu !== null, () => { setContextMenu(null) }, { zIndex: CONTEXT_MENU_Z_INDEX })
 
   const toggleUsageOverview = useCallback(() => {
     setShowUsageOverview((visible) => {

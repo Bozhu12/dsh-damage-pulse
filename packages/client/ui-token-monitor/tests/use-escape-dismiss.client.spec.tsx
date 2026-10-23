@@ -12,8 +12,8 @@ const esc = () => fireEvent.keyDown(document.body, { key: 'Escape' })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 /** 挂载一个登记弹层的探针组件，记录 onEscape 调用。 */
-function Layer({ active, onEscape }: { active: boolean; onEscape: () => void }) {
-  useEscapeDismiss(active, onEscape)
+function Layer({ active, onEscape, zIndex }: { active: boolean; onEscape: () => void; zIndex?: number }) {
+  useEscapeDismiss(active, onEscape, { zIndex })
   return null
 }
 
@@ -71,21 +71,29 @@ it('deactivates a layer without touching the others', () => {
   expect(second).not.toHaveBeenCalled()
 })
 
-it('yields Escape to a host modal covering the plugin layer', async () => {
-  // 复现 review 第 3 条：宿主 Modal（aria-modal）压在插件弹层上时，
-  // 一次 Esc 只归宿主，插件层保持原样；Modal 关闭后插件层恢复响应。
+it('yields Escape to a host modal that is actually above the plugin layer', async () => {
+  // 复现 review：宿主 Modal 的层级（1000）低于插件窗口（1300）时不能让位，
+  // 否则可见的插件窗口按 Esc 毫无反应；只有宿主确实在上层时才让位。
   const onEscape = vi.fn()
   const hostListener = vi.fn()
   document.addEventListener('keydown', hostListener)
-  const view = render(<><Layer active onEscape={onEscape} /></>)
-  // 宿主 Modal 的稳定特征：role=dialog 且 aria-modal=true（插件弹层一律 false）。
-  view.rerender(<><Layer active onEscape={onEscape} /><div role="dialog" aria-modal="true" data-host-modal /></>)
-  esc(); await flush()
-  expect(onEscape).not.toHaveBeenCalled()
-  expect(hostListener).toHaveBeenCalledTimes(1)
-  view.rerender(<><Layer active onEscape={onEscape} /></>)
+  const view = render(<>
+    <Layer active onEscape={onEscape} zIndex={1300} />
+    <div role="dialog" aria-modal="true" data-host-modal style={{ position: 'fixed', zIndex: 1000 }} />
+  </>)
+  // 宿主模态在下面：Esc 归插件层。
   esc(); await flush()
   expect(onEscape).toHaveBeenCalledTimes(1)
+
+  // 宿主模态真的在上面（2000 > 1300）：Esc 归宿主，插件层不动。
+  onEscape.mockClear()
+  view.rerender(<>
+    <Layer active onEscape={onEscape} zIndex={1300} />
+    <div role="dialog" aria-modal="true" data-host-modal style={{ position: 'fixed', zIndex: 2000 }} />
+  </>)
+  esc(); await flush()
+  expect(onEscape).not.toHaveBeenCalled()
+  expect(hostListener).toHaveBeenCalledTimes(2)
   document.removeEventListener('keydown', hostListener)
 })
 

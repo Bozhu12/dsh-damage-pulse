@@ -430,3 +430,16 @@ it('lets Escape reach document listeners of the host while closing its own layer
   expect(close).toHaveBeenCalledTimes(1)
   document.removeEventListener('keydown', hostListener)
 })
+
+it('lets Escape from the provider list reach document listeners of the host', async () => {
+  // 复现 review：供应商下拉内按 Esc 收起下拉，但按键必须继续传播给宿主。
+  const hostListener = vi.fn()
+  document.addEventListener('keydown', hostListener)
+  mount()
+  const trigger = await screen.findByRole('button', { name: /全部供应商|deepseek-official/ })
+  fireEvent.click(trigger)
+  const list = screen.getByRole('listbox')
+  fireEvent.keyDown(list, { key: 'Escape' })
+  expect(hostListener).toHaveBeenCalledTimes(1)
+  document.removeEventListener('keydown', hostListener)
+})

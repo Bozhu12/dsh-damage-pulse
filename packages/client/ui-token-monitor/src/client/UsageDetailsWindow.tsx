@@ -10,6 +10,9 @@ import styles from './UsageDetailsWindow.module.css'
 const FeeExplanation = lazy(() => import('./FeeExplanation.tsx').then(module => ({ default: module.FeeExplanation })))
 import { UsageOverview } from './UsageOverview.tsx'
 import { useEscapeDismiss } from './useEscapeDismiss.ts'
+
+/** 与 UsageDetailsWindow.module.css 的 .window z-index 保持一致（宿主 Modal 是 1000）。 */
+const WINDOW_Z_INDEX = 1300
 import type { UsageSummaryRange } from './types.ts'
 import { useUsageRefresh, usageSummaryUrl } from './useUsageRefresh.ts'
 
@@ -124,7 +127,7 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
       restoringFeeFocus.current = false
     } else if (columnsOpen) { setColumnsOpen(false); columnsAnchor.current?.querySelector('button')?.focus() }
     else onClose()
-  })
+  }, { zIndex: WINDOW_Z_INDEX })
   const scheduleFeeHide = () => {
     clearFeeHide()
     feeHideTimer.current = setTimeout(() => { setFeePopover(current => current?.pinned ? current : undefined) }, 180)
@@ -290,7 +293,7 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
   {feePopover && createPortal(<section id="token-monitor-fee-popover" ref={feePopoverRef} role="region" aria-label={t('feeDetails')} className={styles.feePopover}
     onPointerEnter={clearFeeHide} onPointerLeave={scheduleFeeHide}
     onFocusCapture={clearFeeHide} onBlurCapture={scheduleFeeHide}
-    onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); clearFeeHide(); setFeePopover(undefined); restoringFeeFocus.current = true; feePopover.anchor.focus(); restoringFeeFocus.current = false } }}>
+    onKeyDown={(event) => { if (event.key === 'Escape') { /* Esc 必须继续传播给宿主的 document 监听，否则上层宿主弹层关不掉。 */ clearFeeHide(); setFeePopover(undefined); restoringFeeFocus.current = true; feePopover.anchor.focus(); restoringFeeFocus.current = false } }}>
     <Suspense fallback={null}><FeeExplanation row={feePopover.row} t={t} /></Suspense>
   </section>, document.body)}</>
 }

@@ -65,8 +65,8 @@ it('切到 Plan 额度后渲染供应商、窗口名、已用百分比与下次�
   expect(screen.getByText('zhipuai')).toBeTruthy()
   expect(screen.getByText('套餐 pro')).toBeTruthy()
   expect(screen.getByText('5 小时')).toBeTruthy()
-  // 右侧百分比与进度条同为剩余口径：已用 12.5% → 剩余 87.5%。
-  expect(screen.getByText('87.5%')).toBeTruthy()
+  // 右侧百分比与进度条同为剩余口径：已用 12.5% → 「剩余 87.5%」。
+  expect(screen.getByText('剩余 87.5%')).toBeTruthy()
   expect(screen.getByText('已用 25 / 200')).toBeTruthy()
   expect(screen.getByText('2026-10-23 19:13:00')).toBeTruthy()
   expect(screen.getByText('还剩 2 小时 13 分')).toBeTruthy()
@@ -100,16 +100,16 @@ it('三家供应商的百分比与进度条统一按剩余口径渲染', async (
   expect(bars).toHaveLength(3)
   const [glmBar, kimiBar, miniMaxBar] = bars
   // GLM：已用 74% → 剩余 26.0%，条宽 26%。
-  expect(screen.getByText('26.0%')).toBeTruthy()
+  expect(screen.getByText('剩余 26.0%')).toBeTruthy()
   expect(glmBar!.getAttribute('aria-valuenow')).toBe('26')
   expect((glmBar!.firstElementChild as HTMLElement).style.width).toBe('26%')
   // Kimi：已用 25% → 剩余 75.0%。
-  expect(screen.getByText('75.0%')).toBeTruthy()
+  expect(screen.getByText('剩余 75.0%')).toBeTruthy()
   expect(kimiBar!.getAttribute('aria-valuenow')).toBe('75')
   // MiniMax：已用 100% → 红字「已耗尽」，不显示百分比。
   expect(screen.getByText('已耗尽')).toBeTruthy()
   expect(miniMaxBar!.getAttribute('aria-valuenow')).toBe('0')
-  expect(screen.queryByText('0.0%')).toBeNull()
+  expect(screen.queryByText('剩余 0.0%')).toBeNull()
 })
 
 it('额度用尽时以红字「已耗尽」取代数值区', async () => {
@@ -127,7 +127,7 @@ it('额度用尽时以红字「已耗尽」取代数值区', async () => {
   expect(screen.getByText('已耗尽')).toBeTruthy()
   // 不再展示 100/100 与 100.0% 的读数。
   expect(screen.queryByText('已用 100 / 100')).toBeNull()
-  expect(screen.queryByText('100.0%')).toBeNull()
+  expect(screen.queryByText('剩余 0.0%')).toBeNull()
   // 进度条以剩余渲染：耗尽 → 空条；valuetext 同步为「已耗尽」。
   const bar = screen.getByRole('progressbar', { name: '每周' })
   expect(bar.getAttribute('aria-valuenow')).toBe('0')
@@ -152,6 +152,10 @@ it('进度条带有 progressbar 角色与无障碍数值，没有百分比时改
   expect(monthly.getAttribute('aria-valuenow')).toBeNull()
   expect(monthly.getAttribute('aria-valuetext')).toBe('未记录')
   expect(screen.getByText('未记录')).toBeTruthy()
+  // 未知额度不能画成满条（满条在新口径下等于「额度充足」）：空条 + 弱化样式。
+  const unknownFill = monthly.firstElementChild as HTMLElement
+  expect(unknownFill.style.width).toBe('0%')
+  expect(unknownFill.getAttribute('data-level')).toBe('unknown')
 })
 
 it('整体请求失败时给出错误提示与重试入口', async () => {
@@ -185,8 +189,8 @@ it('单个供应商查询失败时只提示该供应商，其它供应商照常�
   expect(screen.getByText('Moonshot Plan')).toBeTruthy()
   expect(screen.getByText('额度查询失败')).toBeTruthy()
   expect(screen.getByText('GLM Coding Plan')).toBeTruthy()
-  // 右侧百分比与进度条同为剩余口径：已用 12.5% → 剩余 87.5%。
-  expect(screen.getByText('87.5%')).toBeTruthy()
+  // 右侧百分比与进度条同为剩余口径：已用 12.5% → 「剩余 87.5%」。
+  expect(screen.getByText('剩余 87.5%')).toBeTruthy()
 })
 
 it('没有可用额度时显示空态', async () => {
