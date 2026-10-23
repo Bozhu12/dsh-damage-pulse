@@ -550,12 +550,8 @@ export function BalanceWidget({
     setContextMenu(null)
   }, [])
 
-  /** 支持 Context Menu 键和 Shift+F10 打开设置。 */
+  /** 支持 Context Menu 键和 Shift+F10 打开设置；Esc 由 useEscapeDismiss 统一关闭菜单。 */
   const onKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      setContextMenu(null)
-      return
-    }
     if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
       event.preventDefault()
       const rect = event.currentTarget.getBoundingClientRect()

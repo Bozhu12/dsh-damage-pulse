@@ -223,8 +223,7 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
     onPointerDown={(event) => { event.stopPropagation() }}
     onPointerMove={(event) => { event.stopPropagation() }} onPointerUp={(event) => { event.stopPropagation() }}
     onContextMenu={(event) =>{  event.stopPropagation() }} onKeyDown={(event) => {
-      if (!(event.target as HTMLElement).closest('[role=menu]') || event.key === 'Escape') event.stopPropagation()
-      if (event.key === 'Escape') { if (feePopover) { clearFeeHide(); setFeePopover(undefined) } else if (columnsOpen) { setColumnsOpen(false); columnsAnchor.current?.querySelector('button')?.focus() } else onClose() }
+      if (!(event.target as HTMLElement).closest('[role=menu]')) event.stopPropagation()
       if (event.key === 'Tab') setColumnsOpen(false)
     }}>
     <div ref={titleRef} tabIndex={-1} className={styles.title}

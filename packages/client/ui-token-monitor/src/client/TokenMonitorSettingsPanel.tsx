@@ -650,9 +650,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
       onPointerCancel={(event) => { event.stopPropagation() }}
       onClick={(event) => { event.stopPropagation() }}
       onContextMenu={(event) => { event.stopPropagation() }}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape' && !disconnectConfirmation) requestClose()
-      }}
+      // Esc 由 useEscapeDismiss 统一处理（含断开确认的先收起），这里不再重复。
       style={PANEL}
     >
       <style>{`

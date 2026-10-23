@@ -170,6 +170,17 @@ describe('built-in plan quota adapters', () => {
       { current_interval_usage_count: 0, current_interval_total_count: 0, current_interval_remaining_percent: 0, current_interval_status: 1 },
     ] })
     expect(exhausted.windows[0]).toMatchObject({ usedPercent: 100, used: null, total: null })
+    // 周窗口不借用 5 小时窗口的 remains_time：weekly_end_time 缺失时刷新时间保持未记录。
+    const noWeeklyEnd = miniMaxAdapter().parse({ model_remains: [
+      {
+        current_interval_usage_count: 10, current_interval_total_count: 100, current_interval_remaining_percent: 90, current_interval_status: 1,
+        remains_time: 60_000,
+        current_weekly_usage_count: 10, current_weekly_total_count: 1000, current_weekly_remaining_percent: 99, current_weekly_status: 1,
+      },
+    ] })
+    expect(noWeeklyEnd.windows).toHaveLength(2)
+    expect(noWeeklyEnd.windows[1]).toMatchObject({ kind: 'week', usedPercent: 1, used: 10, total: 1000 })
+    expect(noWeeklyEnd.windows[1]!.resetAt).toBeUndefined()
     // 百分比缺失且 total<=0 时该条目不产出窗口。
     expect(miniMaxAdapter().parse({ model_remains: [
       { current_interval_usage_count: 0, current_interval_total_count: 0, current_interval_status: 1 },

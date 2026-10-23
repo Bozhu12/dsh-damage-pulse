@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PlanQuotaProvider, PlanQuotaSnapshot, PlanQuotaWindow, PlanQuotaWindowKind } from '@deepseek-ai/dsh-token-monitor-contract'
-import type { DetailTranslate } from './detail-locales.ts'
+import type { DetailKey, DetailTranslate } from './detail-locales.ts'
 import { beijingDateTime } from './detail-model.ts'
 import styles from './PlanQuotaPanel.module.css'
 
@@ -13,6 +13,14 @@ export const PLAN_QUOTA_POLL_MS = 60_000
 const PLAN_QUOTA_CLOCK_MS = 30_000
 /* 额度窗口展示顺序：5h → week → month → other。 */
 const windowOrder: Record<PlanQuotaWindowKind, number> = { '5h': 0, week: 1, month: 2, other: 3 }
+
+/* 窗口名按界面语言取词；Host 的 label 仅作为未知周期的回退值。 */
+const windowLabelKey: Partial<Record<PlanQuotaWindowKind, DetailKey>> = {
+  '5h': 'planQuotaWindow5h',
+  week: 'planQuotaWindowWeek',
+  month: 'planQuotaWindowMonth',
+  other: 'planQuotaWindowOther',
+}
 
 /* 一次快照请求的失败类型。 */
 export type PlanQuotaError = 'failed' | 'unavailable'
@@ -118,11 +126,14 @@ function usePlanQuotas(active: boolean): PlanQuotaState & { reload: () => void }
     if (!active) return
     let disposed = false
     let sequence = 0
-    const controllers: AbortController[] = []
+    // 只保留当前在途请求：新请求开始时中止上一个，卸载时中止当前，
+    // 避免长驻轮询下 controller 数组只增不减。
+    let inFlight: AbortController | undefined
     const load = async () => {
       const id = ++sequence
+      inFlight?.abort()
       const controller = new AbortController()
-      controllers.push(controller)
+      inFlight = controller
       setState(previous => ({ ...previous, loading: true }))
       try {
         const response = await fetch(PLAN_QUOTA_URL, { cache: 'no-store', signal: controller.signal })
@@ -144,7 +155,7 @@ function usePlanQuotas(active: boolean): PlanQuotaState & { reload: () => void }
     }
     void load()
     const timer = setInterval(() => { void load() }, PLAN_QUOTA_POLL_MS)
-    return () => { disposed = true; clearInterval(timer); for (const controller of controllers) controller.abort() }
+    return () => { disposed = true; clearInterval(timer); inFlight?.abort() }
   }, [active, revision])
   return { ...state, reload }
 }
@@ -163,15 +174,17 @@ function QuotaWindow({ window, now, t }: WindowRowProps) {
     : undefined
   const reset = window.resetAt === undefined ? t('planQuotaResetUnknown') : beijingDateTime(window.resetAt).replace('T', ' ')
   const level = percent === null ? 'none' : percent >= 90 ? 'high' : percent >= 70 ? 'warn' : 'normal'
+  // 窗口名按周期走界面语言；Host 的 label 仅作为未知周期的回退值。
+  const name = windowLabelKey[window.kind] === undefined ? window.label : t(windowLabelKey[window.kind]!)
   return <div className={styles.window}>
     <div className={styles.windowHead}>
-      <span className={styles.windowLabel}>{window.label}</span>
+      <span className={styles.windowLabel}>{name}</span>
       <span className={styles.windowValues}>
         {usage && <span className={styles.windowUsage}>{usage}</span>}
         <span className={styles.windowPercent}>{percent === null ? t('unknown') : percent.toFixed(1) + '%'}</span>
       </span>
     </div>
-    <div className={styles.bar} role="progressbar" aria-label={window.label} aria-valuemin={0} aria-valuemax={100}
+    <div className={styles.bar} role="progressbar" aria-label={name} aria-valuemin={0} aria-valuemax={100}
       aria-valuenow={percent === null ? undefined : Math.round(percent)}
       aria-valuetext={percent === null ? t('unknown') : undefined}>
       <div className={styles.barFill} data-level={level} style={percent === null ? undefined : { width: percent + '%' }} />

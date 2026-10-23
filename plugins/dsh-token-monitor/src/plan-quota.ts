@@ -248,14 +248,16 @@ function miniMaxEpoch(value: unknown): number | undefined {
  * 记录自己的时间字段。`status === 3` 表示该模型不在套餐内，不参与该周期的聚合。
  * @param entries Parsed model entries of the payload.
  * @param kind Which allowance cycle to aggregate.
- * @param fields Field names of the requested cycle.
+ * @param fields Field names of the requested cycle; `remainingMs` names this
+ *   cycle's own remaining-duration field and must be omitted when the API only
+ *   publishes one for another cycle.
  * @param at Snapshot clock used when only a remaining duration is available.
  * @returns The aggregated window, or undefined when no model reports this cycle.
  */
 function miniMaxWindow(
   entries: Record<string, unknown>[],
   kind: PlanQuotaWindowKind,
-  fields: { used: string; total: string; reportedPercent: string; status: string; resetAt: string; remainingMs: string },
+  fields: { used: string; total: string; reportedPercent: string; status: string; resetAt: string; remainingMs?: string },
   at: number,
 ): PlanQuotaWindow | undefined {
   let best: { percent: number | null; window: PlanQuotaWindow } | undefined
@@ -271,9 +273,9 @@ function miniMaxWindow(
     const share = reportedPercent !== undefined
       ? percent(100 - reportedPercent)
       : total !== undefined && total > 0 && used !== undefined ? percent(used / total * 100) : null
-    // 剩余毫秒是相对时长，在解析时刻折算成绝对刷新时间；接口同时给了绝对
-    // 时间戳（周窗口的 end_time）时优先使用。
-    const remainingMs = finiteNumber(entry[fields.remainingMs])
+    // 只允许用本周期自己的剩余时长折算刷新时间：`remains_time` 只描述 5 小时
+    // 窗口，周窗口绝不借用（否则会把周刷新时间错报成「还剩 5 小时窗口的时长」）。
+    const remainingMs = fields.remainingMs === undefined ? undefined : finiteNumber(entry[fields.remainingMs])
     const resetAt = miniMaxEpoch(entry[fields.resetAt])
       ?? (remainingMs !== undefined && remainingMs > 0 ? at + remainingMs : undefined)
     if (share === null && resetAt === undefined) continue
@@ -307,10 +309,13 @@ function parseMiniMaxQuota(raw: unknown): PlanQuotaParse {
     return entry === undefined ? [] : [entry]
   })
   const windows: PlanQuotaWindow[] = []
-  for (const [kind, fields] of [
+  const cycles: readonly [PlanQuotaWindowKind, { used: string; total: string; reportedPercent: string; status: string; resetAt: string; remainingMs?: string }][] = [
     ['5h', { used: 'current_interval_usage_count', total: 'current_interval_total_count', reportedPercent: 'current_interval_remaining_percent', status: 'current_interval_status', resetAt: 'end_time', remainingMs: 'remains_time' }],
-    ['week', { used: 'current_weekly_usage_count', total: 'current_weekly_total_count', reportedPercent: 'current_weekly_remaining_percent', status: 'current_weekly_status', resetAt: 'weekly_end_time', remainingMs: 'remains_time' }],
-  ] as const) {
+    // 周窗口没有自己的剩余时长字段：`remains_time` 只属于 5 小时窗口，
+    // 不传 remainingMs，weekly_end_time 缺失时刷新时间保持未记录。
+    ['week', { used: 'current_weekly_usage_count', total: 'current_weekly_total_count', reportedPercent: 'current_weekly_remaining_percent', status: 'current_weekly_status', resetAt: 'weekly_end_time' }],
+  ]
+  for (const [kind, fields] of cycles) {
     const window = miniMaxWindow(entries, kind, fields, at)
     if (window !== undefined) windows.push(window)
   }

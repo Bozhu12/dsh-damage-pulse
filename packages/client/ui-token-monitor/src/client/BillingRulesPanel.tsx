@@ -429,10 +429,7 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
   return createPortal(<div role="dialog" aria-modal="false" aria-label={t('billingTitle')} className={css.panel}
     style={{ left: frame.shown.x, top: frame.shown.y, width: frame.shown.width, height: frame.shown.height }}
     onPointerDown={(event) => { event.stopPropagation() }}
-    onKeyDown={(event) => {
-      // 与关闭按钮同一条件：正在保存或还有未保存修改时不关闭，避免丢掉编辑。
-      if (event.key === 'Escape' && !(saving || dirty.current || scriptBusy)) onClose()
-    }}>
+    onKeyDown={(event) => { event.stopPropagation() }}>
     <header className={css.header}
       onPointerDown={(event) => { frame.startDrag(event) }} onPointerMove={frame.moveDrag}
       onPointerUp={frame.endDrag} onPointerCancel={frame.endDrag}
