@@ -177,19 +177,23 @@ function QuotaWindow({ window, now, t }: WindowRowProps) {
   // 剩余 <10% 红色告警、<30% 黄色提醒；数值文本仍以「已用」表述。
   const remaining = percent === null ? null : 100 - percent
   const level = remaining === null ? 'none' : remaining <= 10 ? 'high' : remaining <= 30 ? 'warn' : 'normal'
+  // 已用满时以红字「已耗尽」取代整个数值区，不再展示 100/100 这类读数。
+  const exhausted = percent === 100
   // 窗口名按周期走界面语言；Host 的 label 仅作为未知周期的回退值。
   const name = windowLabelKey[window.kind] === undefined ? window.label : t(windowLabelKey[window.kind]!)
   return <div className={styles.window}>
     <div className={styles.windowHead}>
       <span className={styles.windowLabel}>{name}</span>
-      <span className={styles.windowValues}>
-        {usage && <span className={styles.windowUsage}>{usage}</span>}
-        <span className={styles.windowPercent}>{percent === null ? t('unknown') : percent.toFixed(1) + '%'}</span>
-      </span>
+      {exhausted
+        ? <span className={styles.windowExhausted} role="status">{t('planQuotaExhausted')}</span>
+        : <span className={styles.windowValues}>
+          {usage && <span className={styles.windowUsage}>{usage}</span>}
+          <span className={styles.windowPercent}>{percent === null ? t('unknown') : percent.toFixed(1) + '%'}</span>
+        </span>}
     </div>
     <div className={styles.bar} role="progressbar" aria-label={name} aria-valuemin={0} aria-valuemax={100}
       aria-valuenow={remaining === null ? undefined : Math.round(remaining)}
-      aria-valuetext={remaining === null ? t('unknown') : undefined}>
+      aria-valuetext={remaining === null ? t('unknown') : exhausted ? t('planQuotaExhausted') : undefined}>
       <div className={styles.barFill} data-level={level} style={remaining === null ? undefined : { width: remaining + '%' }} />
     </div>
     <div className={styles.meta}>

@@ -74,6 +74,30 @@ it('切到 Plan 额度后渲染供应商、窗口名、已用百分比与下次�
   expect(screen.getAllByRole('progressbar').map(node => node.getAttribute('aria-label'))).toEqual(['5 小时', '每周', '每月'])
 })
 
+it('额度用尽时以红字「已耗尽」取代数值区', async () => {
+  const snapshot: PlanQuotaSnapshot = {
+    updatedAt: now,
+    providers: [{
+      provider: 'zhipuai', label: 'GLM Coding Plan', status: 'ok', updatedAt: now,
+      windows: [{ kind: 'week', label: '每周', usedPercent: 100, used: 100, total: 100, resetAt: resetWeek }],
+    }],
+  }
+  mount(async url => ok(String(url).includes('plan-quotas') ? snapshot : summary))
+  await flush()
+  fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
+  await flush()
+  expect(screen.getByText('已耗尽')).toBeTruthy()
+  // 不再展示 100/100 与 100.0% 的读数。
+  expect(screen.queryByText('已用 100 / 100')).toBeNull()
+  expect(screen.queryByText('100.0%')).toBeNull()
+  // 进度条以剩余渲染：耗尽 → 空条；valuetext 同步为「已耗尽」。
+  const bar = screen.getByRole('progressbar', { name: '每周' })
+  expect(bar.getAttribute('aria-valuenow')).toBe('0')
+  expect(bar.getAttribute('aria-valuetext')).toBe('已耗尽')
+  const fill = bar.firstElementChild as HTMLElement
+  expect(fill.style.width).toBe('0%')
+})
+
 it('进度条带有 progressbar 角色与无障碍数值，没有百分比时改用 valuetext', async () => {
   mount(defaultFetch)
   await flush()
