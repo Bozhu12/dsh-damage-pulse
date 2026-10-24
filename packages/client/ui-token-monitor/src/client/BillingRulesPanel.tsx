@@ -231,8 +231,10 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
       return
     }
     if (!(saving || dirty.current || scriptBusy)) onClose()
-  }, { zIndex: PANEL_Z_INDEX })
+  }, { zIndex: PANEL_Z_INDEX, element: () => panelRef.current })
   const providerMenu = useRef<HTMLDivElement>(null)
+  /** 面板根元素：Esc 层级判定用它做命中测试。 */
+  const panelRef = useRef<HTMLDivElement>(null)
   const savePending = useRef(false)
   const catalogGeneration = useRef(0)
   const bodyRef = useRef<HTMLFieldSetElement>(null)
@@ -429,7 +431,7 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
     return () => { clearTimeout(timer) }
   }, [draft, multipliers, saving, snapshot, externalSnapshot, error])
 
-  return createPortal(<div role="dialog" aria-modal="false" aria-label={t('billingTitle')} className={css.panel}
+  return createPortal(<div ref={panelRef} role="dialog" aria-modal="false" aria-label={t('billingTitle')} className={css.panel}
     style={{ left: frame.shown.x, top: frame.shown.y, width: frame.shown.width, height: frame.shown.height }}
     onPointerDown={(event) => { event.stopPropagation() }}>
     {/* 面板 portal 到 body，键盘事件不经过悬浮卡；拦截全部按键会挡住宿主 document 监听，故不设 onKeyDown。 */}

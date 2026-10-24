@@ -295,6 +295,8 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
   const savePromiseRef = useRef<Promise<void>>()
   const switchingRef = useRef(false)
   const pendingRef = useRef(false)
+  /** 表单根元素：Esc 层级判定用它做命中测试。 */
+  const formRef = useRef<HTMLFormElement>(null)
 
   const setNumberInput = (id: NumberInputId, raw: string) => {
     numberInputsRef.current = { ...numberInputsRef.current, [id]: raw }
@@ -418,7 +420,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
   useEscapeDismiss(true, () => {
     if (disconnectConfirmation) setDisconnectConfirmation(false)
     else void requestClose()
-  }, { zIndex: SETTINGS_Z_INDEX })
+  }, { zIndex: SETTINGS_Z_INDEX, element: () => formRef.current })
 
   const selectProvider = async (nextProvider: string) => {
     if (!props.loadProvider || switchingRef.current || !commitNumberInputs()) return
@@ -639,6 +641,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
 
   return (
     <form
+      ref={formRef}
       aria-label={PRODUCT_NAME + ' 设置'}
       className="token-monitor-settings"
       data-token-monitor-settings-theme="whale-outfit-blue"

@@ -127,7 +127,7 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
       restoringFeeFocus.current = false
     } else if (columnsOpen) { setColumnsOpen(false); columnsAnchor.current?.querySelector('button')?.focus() }
     else onClose()
-  }, { zIndex: WINDOW_Z_INDEX })
+  }, { zIndex: WINDOW_Z_INDEX, element: () => windowRef.current })
   const scheduleFeeHide = () => {
     clearFeeHide()
     feeHideTimer.current = setTimeout(() => { setFeePopover(current => current?.pinned ? current : undefined) }, 180)
@@ -150,6 +150,8 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
   useEffect(() => { clearFeeHide(); setFeePopover(undefined) }, [data, columns, billingInstalled])
   useEffect(() => { try { localStorage.setItem(columnsKey, JSON.stringify(columns)) } catch { /* Optional preference. */ } }, [columns])
   const titleRef = useRef<HTMLDivElement>(null)
+  /** 弹层根元素：Esc 层级判定用它做命中测试。 */
+  const windowRef = useRef<HTMLElement>(null)
   useEffect(() => { titleRef.current?.focus() }, [])
   const change = (patch: Partial<Filters>) => { snapshot.current = ''; setFilters(value => ({ ...value, ...patch })); setPage(1) }
   const reload = () => { snapshot.current = ''; setPage(1); setRefresh(value => value + 1) }
@@ -220,7 +222,7 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
       case 'status': return <details className={styles.bad}><summary>{row.status === 'cancelled' ? t('cancelledStatus') : errorLabel(row.errorType, t)}</summary><div>{t('http')}: {row.httpStatus ?? t('unknown')}</div><div className={styles.secondary}>{t('errorSafe')}</div></details>
     }
   }
-  return <>{createPortal(<section role="dialog" aria-modal="false" aria-label={t('title')} className={styles.window}
+  return <>{createPortal(<section ref={windowRef} role="dialog" aria-modal="false" aria-label={t('title')} className={styles.window}
     data-compact={compact} data-short={short} data-condensed={shown.width < 950}
     style={{ left: shown.x, top: shown.y, width: shown.width, height: shown.height }}
     onPointerDown={(event) => { event.stopPropagation() }}

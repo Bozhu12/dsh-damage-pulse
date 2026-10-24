@@ -71,29 +71,40 @@ it('deactivates a layer without touching the others', () => {
   expect(second).not.toHaveBeenCalled()
 })
 
-it('yields Escape to a host modal that is actually above the plugin layer', async () => {
-  // 复现 review：宿主 Modal 的层级（1000）低于插件窗口（1300）时不能让位，
-  // 否则可见的插件窗口按 Esc 毫无反应；只有宿主确实在上层时才让位。
+it('lets a visible plugin layer handle Escape and keeps the hidden host modal open', async () => {
+  // 复现真实宿主结构：Modal 的卡片自身 z-index 是 1，真正参与叠放的
+  // 根层祖先才是 1000（插件窗口 1300 在它之上）。
   const onEscape = vi.fn()
   const hostListener = vi.fn()
   document.addEventListener('keydown', hostListener)
   const view = render(<>
     <Layer active onEscape={onEscape} zIndex={1300} />
-    <div role="dialog" aria-modal="true" data-host-modal style={{ position: 'fixed', zIndex: 1000 }} />
+    <div data-host-root style={{ position: 'fixed', zIndex: 1000 }}>
+      <div role="dialog" aria-modal="true" style={{ zIndex: 1 }} />
+    </div>
   </>)
-  // 宿主模态在下面：Esc 归插件层。
+  // 插件窗口在上：只关插件层，宿主模态不能被连关（阻断传播）。
   esc(); await flush()
   expect(onEscape).toHaveBeenCalledTimes(1)
+  expect(hostListener).not.toHaveBeenCalled()
+  view.unmount()
+  document.removeEventListener('keydown', hostListener)
+})
 
-  // 宿主模态真的在上面（2000 > 1300）：Esc 归宿主，插件层不动。
-  onEscape.mockClear()
-  view.rerender(<>
+it('yields Escape when the host modal really is above the plugin layer', async () => {
+  const onEscape = vi.fn()
+  const hostListener = vi.fn()
+  document.addEventListener('keydown', hostListener)
+  render(<>
     <Layer active onEscape={onEscape} zIndex={1300} />
-    <div role="dialog" aria-modal="true" data-host-modal style={{ position: 'fixed', zIndex: 2000 }} />
+    <div data-host-root style={{ position: 'fixed', zIndex: 2000 }}>
+      <div role="dialog" aria-modal="true" style={{ zIndex: 1 }} />
+    </div>
   </>)
+  // 宿主模态在上：插件层保持原样，宿主自己关闭（监听正常收到）。
   esc(); await flush()
   expect(onEscape).not.toHaveBeenCalled()
-  expect(hostListener).toHaveBeenCalledTimes(2)
+  expect(hostListener).toHaveBeenCalledTimes(1)
   document.removeEventListener('keydown', hostListener)
 })
 

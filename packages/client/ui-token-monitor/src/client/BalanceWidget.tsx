@@ -542,7 +542,8 @@ const CONTEXT_MENU_Z_INDEX = 1100
   }, [])
 
   // 全局 ESC：焦点不在卡片/菜单内也能关闭右键菜单。
-  useEscapeDismiss(contextMenu !== null, () => { setContextMenu(null) }, { zIndex: CONTEXT_MENU_Z_INDEX })
+  useEscapeDismiss(contextMenu !== null, () => { setContextMenu(null) },
+    { zIndex: CONTEXT_MENU_Z_INDEX, element: () => contextMenuRef.current })
 
   const toggleUsageOverview = useCallback(() => {
     setShowUsageOverview((visible) => {
@@ -1389,12 +1390,6 @@ const CONTEXT_MENU_Z_INDEX = 1100
           // An empty title blocks the balance card's inherited native tooltip.
           title=""
           onPointerDown={event => event.stopPropagation()}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              event.stopPropagation()
-              setContextMenu(null)
-            }
-          }}
           style={{
             position: 'fixed',
             left: contextMenu.left,
