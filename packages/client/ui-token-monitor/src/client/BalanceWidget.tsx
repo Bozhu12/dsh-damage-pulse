@@ -1386,6 +1386,7 @@ const CONTEXT_MENU_Z_INDEX = 1100
         <MenuSurface
           ref={contextMenuRef}
           role="menu"
+          data-token-monitor-layer="context-menu"
           aria-label="余额显示设置"
           // An empty title blocks the balance card's inherited native tooltip.
           title=""

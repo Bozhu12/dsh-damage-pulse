@@ -202,6 +202,40 @@ it('没有可用额度时显示空态', async () => {
   expect(screen.queryByRole('progressbar')).toBeNull()
 })
 
+it('单个供应商字段非法时只丢这一家，其余供应商照常渲染', async () => {
+  // Client 侧不能因为一家字段异常就把整页判成加载失败。
+  mount(async url => ok(String(url).includes('plan-quotas') ? {
+    updatedAt: now,
+    providers: [
+      planSnapshot.providers[0],
+      { provider: 'broken', label: 'Broken Plan', status: 'ok', updatedAt: now, windows: [{ kind: 'week', label: '每周', usedPercent: 'x', used: 1, total: 10 }] },
+    ],
+  } : summary))
+  await flush()
+  fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
+  await flush()
+  expect(screen.queryByText('Plan 额度加载失败，请重试')).toBeNull()
+  expect(screen.getByText('GLM Coding Plan')).toBeTruthy()
+  expect(screen.queryByText('Broken Plan')).toBeNull()
+})
+
+it('刷新时间已过但仍是 100% 时只说等待刷新，不与「已耗尽」并列', async () => {
+  const expired = now - 60_000
+  mount(async url => ok(String(url).includes('plan-quotas') ? {
+    updatedAt: now,
+    providers: [{ provider: 'zhipuai', label: 'GLM Coding Plan', status: 'ok', updatedAt: now, windows: [
+      { kind: 'week', label: '每周', usedPercent: 100, used: 100, total: 100, resetAt: expired },
+    ] }],
+  } : summary))
+  await flush()
+  fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
+  await flush()
+  expect(screen.getByText('已用尽，等待刷新')).toBeTruthy()
+  expect(screen.queryByText('已耗尽')).toBeNull()
+  expect(screen.queryByText('已到期')).toBeNull()
+  expect(screen.getByText('等待刷新')).toBeTruthy()
+})
+
 it('停留在 Plan 页签时每 60 秒刷新一次，切走后停止轮询', async () => {
   const { fetcher } = mount(defaultFetch)
   await flush()

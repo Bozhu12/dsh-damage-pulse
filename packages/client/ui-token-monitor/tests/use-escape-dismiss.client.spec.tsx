@@ -116,6 +116,71 @@ it('ignores keys other than Escape', () => {
   expect(onEscape).not.toHaveBeenCalled()
 })
 
+it('ignores Escape pressed while an IME composition is active', () => {
+  // 中文输入法里 Esc 是「取消候选」，不能连带关掉弹层、丢掉未保存编辑。
+  const onEscape = vi.fn()
+  render(<Layer active onEscape={onEscape} />)
+  fireEvent.keyDown(document.body, { key: 'Escape', isComposing: true, keyCode: 229 })
+  expect(onEscape).not.toHaveBeenCalled()
+  // 组合结束后同一个键恢复为关闭。
+  esc()
+  expect(onEscape).toHaveBeenCalledTimes(1)
+})
+
+it('closes the visually top layer even when a lower layer mounts later', () => {
+  // 详细用量 1300 先开、通知设置 1200 后开：视觉最上层是 1300。
+  const closed: string[] = []
+  render(<>
+    <Layer active onEscape={() => { closed.push('details') }} zIndex={1300} />
+    <Layer active onEscape={() => { closed.push('settings') }} zIndex={1200} />
+  </>)
+  esc()
+  expect(closed).toEqual(['details'])
+})
+
+it('treats a host Menu as a host overlay, not only aria-modal dialogs', () => {
+  // 宿主 Menu 不是模态标记，但同样把 Esc 挂在 document 上（z-index 1100）。
+  const onEscape = vi.fn()
+  const hostListener = vi.fn()
+  document.addEventListener('keydown', hostListener)
+  render(<>
+    <Layer active onEscape={onEscape} zIndex={1300} />
+    <div role="menu" style={{ position: 'fixed', zIndex: 1100 }} />
+  </>)
+  esc()
+  // 插件在上：只关插件层，宿主菜单不应被同一个按键带走。
+  expect(onEscape).toHaveBeenCalledTimes(1)
+  expect(hostListener).not.toHaveBeenCalled()
+  document.removeEventListener('keydown', hostListener)
+})
+
+it('yields to a host Menu that is actually above the plugin layer', () => {
+  const onEscape = vi.fn()
+  const hostListener = vi.fn()
+  document.addEventListener('keydown', hostListener)
+  render(<>
+    <Layer active onEscape={onEscape} zIndex={1100} />
+    <div role="menu" style={{ position: 'fixed', zIndex: 1200 }} />
+  </>)
+  esc()
+  expect(onEscape).not.toHaveBeenCalled()
+  expect(hostListener).toHaveBeenCalledTimes(1)
+  document.removeEventListener('keydown', hostListener)
+})
+
+it('does not mistake the plugin own menu for a host overlay', () => {
+  const onEscape = vi.fn()
+  const hostListener = vi.fn()
+  document.addEventListener('keydown', hostListener)
+  render(<>
+    <Layer active onEscape={onEscape} zIndex={1100} />
+    <div role="menu" data-token-monitor-layer="context-menu" style={{ position: 'fixed', zIndex: 1100 }} />
+  </>)
+  esc()
+  expect(onEscape).toHaveBeenCalledTimes(1)
+  document.removeEventListener('keydown', hostListener)
+})
+
 /** 真实组件形态的回归：后挂载的详细用量窗口先被关闭。 */
 it('closes the later-mounted usage window first when two are open', async () => {
   const closed: string[] = []

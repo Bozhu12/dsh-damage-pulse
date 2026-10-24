@@ -642,6 +642,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
   return (
     <form
       ref={formRef}
+      data-token-monitor-layer="settings"
       aria-label={PRODUCT_NAME + ' 设置'}
       className="token-monitor-settings"
       data-token-monitor-settings-theme="whale-outfit-blue"

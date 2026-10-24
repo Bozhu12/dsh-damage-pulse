@@ -80,9 +80,9 @@ export function parsePlanQuotaSnapshot(value: unknown): PlanQuotaSnapshot | unde
   if (!Array.isArray(row.providers)) return undefined
   const providers: PlanQuotaProvider[] = []
   for (const item of row.providers) {
+    // 单个供应商不合格只丢这一家，与 Host 侧「坏条目跳过、不牵连整体」一致。
     const provider = parseProvider(item)
-    if (!provider) return undefined
-    providers.push(provider)
+    if (provider) providers.push(provider)
   }
   return { updatedAt: row.updatedAt, providers }
 }
@@ -153,9 +153,26 @@ function usePlanQuotas(active: boolean): PlanQuotaState & { reload: () => void }
         setState(previous => ({ ...previous, loading: false, error: 'failed' }))
       }
     }
+    // 页面在后台时不轮询：桌面端最小化或切走后请求没有意义，恢复可见时立刻补一次。
+    // 与 useUsageRefresh 的全量概览轮询保持同一套可见性口径。
+    const visible = (): boolean => document.visibilityState !== 'hidden'
     void load()
-    const timer = setInterval(() => { void load() }, PLAN_QUOTA_POLL_MS)
-    return () => { disposed = true; clearInterval(timer); inFlight?.abort() }
+    let timer: ReturnType<typeof setInterval> | undefined
+    const start = (): void => {
+      if (timer === undefined) timer = setInterval(() => { if (visible()) void load() }, PLAN_QUOTA_POLL_MS)
+    }
+    const stop = (): void => { if (timer !== undefined) { clearInterval(timer); timer = undefined } }
+    const onVisibility = (): void => {
+      if (visible()) { void load(); start() } else stop()
+    }
+    if (visible()) start()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      disposed = true
+      stop()
+      document.removeEventListener('visibilitychange', onVisibility)
+      inFlight?.abort()
+    }
   }, [active, revision])
   return { ...state, reload }
 }
@@ -180,13 +197,17 @@ function QuotaWindow({ window, now, t }: WindowRowProps) {
   const level = remaining === null ? 'unknown' : remaining <= 10 ? 'high' : remaining <= 30 ? 'warn' : 'normal'
   // 已用满时以红字「已耗尽」取代整个数值区，不再展示 100/100 这类读数。
   const exhausted = percent === 100
+  // 刷新时间已过但供应商仍报 100%：说明上游还没换窗口，不能同时说「已耗尽」
+  // 和「已到期」。这时只提示等待刷新；其它过期场景仍按「已到期」显示。
+  const expired = window.resetAt !== undefined && window.resetAt <= now
+  const awaitingReset = expired && percent === 100
   // 窗口名按周期走界面语言；Host 的 label 仅作为未知周期的回退值。
   const name = windowLabelKey[window.kind] === undefined ? window.label : t(windowLabelKey[window.kind]!)
   return <div className={styles.window}>
     <div className={styles.windowHead}>
       <span className={styles.windowLabel}>{name}</span>
       {exhausted
-        ? <span className={styles.windowExhausted} role="status">{t('planQuotaExhausted')}</span>
+        ? <span className={styles.windowExhausted} role="status">{t(awaitingReset ? 'planQuotaAwaitingReset' : 'planQuotaExhausted')}</span>
         : <span className={styles.windowValues}>
           {usage && <span className={styles.windowUsage}>{usage}</span>}
           <span className={styles.windowPercent}>{remaining === null ? t('unknown') : t('planQuotaRemainingPercent', { value: remaining.toFixed(1) })}</span>
@@ -200,7 +221,7 @@ function QuotaWindow({ window, now, t }: WindowRowProps) {
     <div className={styles.meta}>
       <span className={styles.metaLabel}>{t('planQuotaResetLabel')}</span>
       <span className={styles.resetTime}>{reset}</span>
-      <span className={styles.remaining}>{planQuotaRemaining(window.resetAt, now, t)}</span>
+      <span className={styles.remaining}>{awaitingReset ? t('planQuotaResetDue') : planQuotaRemaining(window.resetAt, now, t)}</span>
     </div>
   </div>
 }

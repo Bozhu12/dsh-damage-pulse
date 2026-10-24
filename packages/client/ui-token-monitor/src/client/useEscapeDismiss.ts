@@ -1,29 +1,32 @@
 import { useEffect, useRef } from 'react'
 
 /**
+ * 标记插件的自绘弹层（含 portal 出去的浮层）。
+ *
+ * 宿主弹层与插件弹层可能同屏，Esc 归属要能区分「谁是我的」。带 data 属性的
+ * 层直接标记；宿主 Menu 原语只透传 class 的地方用这个类名。
+ */
+export const PLUGIN_LAYER_CLASS = 'tm-plugin-owned-layer'
+
+/**
  * 全局 ESC 关闭：共享弹层栈 + 单个 window 捕获监听。
  *
  * 宿主的 Modal / Menu 原语把 Esc 监听挂在 document 上。为了既让宿主能收到
  * Esc、又避免一次按键连关两层，这里按「谁真的在最上层」分档处理：
  *
- * - 没有宿主模态打开时：只 `preventDefault()`、不阻断传播，宿主自己的
+ * - 没有宿主弹层打开时：只 `preventDefault()`、不阻断传播，宿主自己的
  *   Esc 处理（window/document 上的全局监听）照常工作。
- * - 宿主模态**确实盖在插件层之上**时：让位——插件层不动，不阻断传播，
- *   由宿主关闭自己的模态。
- * - 插件层确实在最上层、宿主模态在它下面时：插件层响应，并阻断传播，
- *   避免把用户看不见的宿主模态一起关掉。
- *
- * 「谁在上层」用命中测试判断（命中插件层中心点的元素是否属于插件层），
- * 而不是猜 DOM 里谁的 z-index 大——宿主 Modal 的 `role="dialog"` 卡片
- * 自身 z-index 是 1，真正参与叠放的根层在祖先上，按卡片比较会得出相反
- * 的结论。命中测试拿不到结果（未挂载、未实现）时回退到层级比较。
+ * - 宿主弹层（Modal 或 Menu）**确实盖在插件层之上**时：让位——插件层不动，
+ *   不阻断传播，由宿主关闭自己的弹层。
+ * - 插件层确实在最上层、宿主弹层在它下面时：插件层响应，并阻断传播，
+ *   避免把用户看不见的宿主弹层一起关掉。
  *
  * 供自绘弹层（通知设置、计费规则、详细用量窗口、悬浮卡右键菜单等）补齐
  * 与宿主一致的行为；宿主 Modal / Menu 自身不需要接入。
  * @param active 弹层是否处于打开状态；false 时不登记。
  * @param onEscape 该弹层成为最上层时、用户按下 Esc 执行的动作。
  * @param options.element 该弹层的根元素，用于命中测试判断它是否在最上层。
- * @param options.zIndex 命中测试不可用时的回退层级（与组件 CSS 保持一致）。
+ * @param options.zIndex 该弹层的层级，参与插件内部与宿主的叠放比较。
  */
 export function useEscapeDismiss(
   active: boolean,
@@ -58,53 +61,117 @@ interface Layer {
   onEscape(): void
 }
 
-/** 同时登记的弹层，后 push 的在后打开、位于栈顶。 */
+/** 同时登记的弹层；目标层按视觉层级选，不按挂载顺序。 */
 const layers: Layer[] = []
 let listening = false
 
 function onKeydown(event: KeyboardEvent): void {
   if (event.key !== 'Escape') return
-  const top = layers[layers.length - 1]
+  // 输入法组合期间按 Esc 是「取消候选」，不能顺手关掉弹层、丢掉未保存编辑。
+  // 旧版 WebKit/Chromium 在组合态给的是 keyCode 229，一并放行。
+  if (event.isComposing || event.keyCode === 229) return
+  const top = topMostLayer()
   if (!top) return
-  const hostModal = hostModalPresent()
-  if (hostModal && !layerAboveHostModal(top)) {
-    // 宿主模态真的盖在插件层上面：Esc 归宿主，插件层保持原样，
-    // 也不阻断传播（宿主 Modal 的 document 监听要靠它关闭自己）。
+  if (hostOverlayAbove(top)) {
+    // 宿主的弹层（Modal 或 Menu）真的盖在插件层上面：Esc 归宿主，
+    // 插件层保持原样，也不阻断传播（宿主 document 上的监听要靠它关闭自己）。
     return
   }
   event.preventDefault()
-  if (hostModal) {
-    // 插件层在上、宿主模态在下面：只关插件层，阻断传播避免连关看不见的模态。
+  if (hostOverlayPresent()) {
+    // 插件层在上、宿主弹层在下面：只关插件层，阻断传播避免连关看不见的那层。
     event.stopPropagation()
   }
   top.onEscape()
 }
 
-/** 页面上是否存在宿主模态：宿主 Modal 渲染 role=dialog 且 aria-modal=true。 */
-function hostModalPresent(): boolean {
-  return document.querySelector('[role="dialog"][aria-modal="true"]') !== null
+/**
+ * 选出插件自己的最上层弹层。
+ *
+ * 只按挂载顺序取栈顶会关错层：先开的详细用量（1300）可能压在后开的通知
+ * 设置（1200）之上。层级相同时仍按挂载顺序，后开的先关。
+ * @returns 视觉上最上层的插件弹层。
+ */
+function topMostLayer(): Layer | undefined {
+  let top: Layer | undefined
+  for (const layer of layers) {
+    if (top === undefined || layer.zIndex >= top.zIndex) top = layer
+  }
+  return top
+}
+
+/** 宿主弹层的稳定选择器：Modal 是模态对话框，Menu/listbox 是宿主浮层。 */
+const HOST_OVERLAY_SELECTOR = '[role="dialog"][aria-modal="true"], [role="menu"], [role="listbox"]'
+
+/** 页面上是否存在宿主弹层（Modal 或 Menu）。 */
+function hostOverlayPresent(): boolean {
+  return hostOverlayElements().length > 0
 }
 
 /**
- * 插件层是否真的在宿主模态之上。
+ * 宿主弹层中不属于插件、且确实以浮层形式叠放的那一层。
  *
- * 优先在插件层中心点做命中测试：命中的元素属于插件层即说明它没被盖住。
- * 命中测试不可用（未挂载、环境未实现）时回退到计算样式的层级比较。
- * @param layer 栈顶弹层。
- * @returns 插件层在宿主模态之上时为 true。
+ * 带 role=menu/listbox 的元素也可能是页面里的普通内联控件；只有定位成
+ * fixed/absolute 并带明确层级时才当作浮层，避免误把别处的控件算成宿主弹层。
+ */
+function hostOverlayElements(): Element[] {
+  return [...document.querySelectorAll(HOST_OVERLAY_SELECTOR)]
+    .filter(node => !isPluginOwned(node)
+      // 模态对话框本身就是浮层；menu/listbox 可能是内联控件，要求确实在叠放。
+      && (node.getAttribute('aria-modal') === 'true' || isStackedOverlay(node)))
+}
+
+/** 元素是否以浮层形式参与叠放（定位 + 明确 z-index）。 */
+function isStackedOverlay(node: Element): boolean {
+  const style = window.getComputedStyle(node)
+  if (style.position !== 'fixed' && style.position !== 'absolute') return false
+  return Number.isFinite(Number.parseInt(style.zIndex, 10))
+}
+
+/** 元素是否属于插件的自绘弹层（含 portal 出去的浮层）。 */
+function isPluginOwned(node: Element | null): boolean {
+  let current: Element | null = node
+  while (current !== null) {
+    if (current.hasAttribute('data-token-monitor-layer')) return true
+    if (current.classList.contains(PLUGIN_LAYER_CLASS)) return true
+    if (layers.some(layer => layer.getElement() === current)) return true
+    current = current.parentElement
+  }
+  return false
+}
+
+/**
+ * 插件层是否真的在宿主弹层之上。
+ *
+ * 优先在插件层中心点做命中测试：命中的元素属于插件（含它自己的 portal
+ * 浮层）即说明它没被盖住。命中测试不可用（未挂载、环境未实现）时回退到
+ * 计算样式的层级比较。
+ * @param layer 参与比较的插件弹层。
+ * @returns 插件层在宿主弹层之上时为 true。
  */
 function layerAboveHostModal(layer: Layer): boolean {
   const element = layer.getElement()
-  if (element === null) return layer.zIndex >= hostModalStackingZ()
+  if (element === null) return layer.zIndex >= hostOverlayStackingZ()
   const rect = element.getBoundingClientRect()
   const x = rect.left + rect.width / 2
   const y = rect.top + rect.height / 2
   if (rect.width > 0 && rect.height > 0 && Number.isFinite(x) && Number.isFinite(y)) {
     const hit = document.elementFromPoint(x, y)
-    if (hit !== null) return element.contains(hit)
+    // 命中插件自己的任意浮层（例如费用浮层）也算插件在上：同一个组件
+    // 的浮层 portal 到 body 后不再是窗口的子元素，但语义上属于它。
+    if (hit !== null) return isPluginOwned(hit)
   }
   // 命中测试不可用：比较各自参与的叠放层。
-  return stackingZIndexOf(element) >= hostModalStackingZ()
+  return stackingZIndexOf(element) >= hostOverlayStackingZ()
+}
+
+/**
+ * 宿主弹层是否真的盖在给定插件层之上。
+ * @param layer 参与比较的插件弹层。
+ * @returns 宿主弹层在上（或无法判断为插件在上）时为 true。
+ */
+function hostOverlayAbove(layer: Layer): boolean {
+  return hostOverlayPresent() && !layerAboveHostModal(layer)
 }
 
 /**
@@ -125,11 +192,11 @@ function stackingZIndexOf(node: Element): number {
   return stacking
 }
 
-/** 宿主模态实际参与叠放的层级（取最高者）。 */
-function hostModalStackingZ(): number {
+/** 宿主弹层实际参与叠放的层级（取最高者）。 */
+function hostOverlayStackingZ(): number {
   let highest = 0
-  for (const modal of document.querySelectorAll('[role="dialog"][aria-modal="true"]')) {
-    highest = Math.max(highest, stackingZIndexOf(modal))
+  for (const overlay of hostOverlayElements()) {
+    highest = Math.max(highest, stackingZIndexOf(overlay))
   }
   return highest
 }

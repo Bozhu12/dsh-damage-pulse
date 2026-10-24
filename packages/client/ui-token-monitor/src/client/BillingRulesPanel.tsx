@@ -431,7 +431,7 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
     return () => { clearTimeout(timer) }
   }, [draft, multipliers, saving, snapshot, externalSnapshot, error])
 
-  return createPortal(<div ref={panelRef} role="dialog" aria-modal="false" aria-label={t('billingTitle')} className={css.panel}
+  return createPortal(<div ref={panelRef} data-token-monitor-layer="billing" role="dialog" aria-modal="false" aria-label={t('billingTitle')} className={css.panel}
     style={{ left: frame.shown.x, top: frame.shown.y, width: frame.shown.width, height: frame.shown.height }}
     onPointerDown={(event) => { event.stopPropagation() }}>
     {/* 面板 portal 到 body，键盘事件不经过悬浮卡；拦截全部按键会挡住宿主 document 监听，故不设 onKeyDown。 */}
@@ -471,7 +471,7 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
           onClick={() => { setProviderOpen(value => !value) }}>
           <span>{catalog.groups.find(group => group.id === providerFilter)?.name ?? (providerFilter || t('billingAllProviders'))}</span><span aria-hidden="true">⌄</span>
         </Button>
-        {providerOpen && <MenuSurface role="listbox" aria-label={t('billingProvider')} className={css.providerOptions}>
+        {providerOpen && <MenuSurface role="listbox" data-token-monitor-layer="billing-provider" aria-label={t('billingProvider')} className={css.providerOptions}>
           {['', ...providerIds].map(provider => <button key={provider} className={css.providerOption} type="button" role="option"
             aria-selected={providerFilter === provider} onClick={() => { setProviderFilter(provider); if (provider && tab === 'balance') select(provider); setProviderOpen(false) }}>
             {catalog.groups.find(group => group.id === provider)?.name ?? (provider || t('billingAllProviders'))}
