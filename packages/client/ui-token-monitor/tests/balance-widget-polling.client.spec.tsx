@@ -75,4 +75,24 @@ describe('balance polling cadence', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(46_000) })
     expect(starts).toEqual([0, 30_000])
   })
+
+  it('账户模式：隐藏暂停后回到前台重挂固定节拍并立即补拉', async () => {
+    const { view, starts } = mount(0)
+    await act(async () => {})
+    const before = starts.length
+    const visibility = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
+    expect(starts.length).toBe(before)
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await act(async () => {})
+    expect(starts.length).toBe(before + 1)
+    // interval 必须在回前台时重挂：这是账户模式自动校准不中断的回归锁。
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
+    expect(starts.length).toBe(before + 2)
+    view.unmount()
+    if (visibility) Object.defineProperty(document, 'visibilityState', visibility)
+  })
 })

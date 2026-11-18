@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
+import { DEFAULT_TOKEN_MONITOR_SETTINGS } from '@deepseek-ai/dsh-token-monitor-contract'
 import type { PlanQuotaProvider, PlanQuotaSnapshot, PlanQuotaWindow, PlanQuotaWindowKind } from '@deepseek-ai/dsh-token-monitor-contract'
 import type { DetailKey, DetailTranslate } from './detail-locales.ts'
 import { beijingDateTime } from './detail-model.ts'
+import { createTokenMonitorSettingsApi } from './settingsApi.ts'
 import styles from './PlanQuotaPanel.module.css'
 
 /* Host 提供的 Plan 额度快照端点。 */
 export const PLAN_QUOTA_URL = '/api/token-monitor/plan-quotas'
-/* Plan 额度页签停留期间的轮询间隔。 */
-export const PLAN_QUOTA_POLL_MS = 60_000
+/* Plan 额度页签的轮询周期改为用户可配（planQuotaPollSeconds，默认 60s，0 = 仅手动）。 */
 /* 本地时钟推进间隔，用来保持剩余时长实时。 */
 const PLAN_QUOTA_CLOCK_MS = 30_000
 /* 额度窗口展示顺序：5h → week → month → other。 */
@@ -116,9 +117,10 @@ function formatAmount(value: number): string { return value.toLocaleString('zh-C
 /**
  * 面板处于激活状态时轮询 Plan 额度端点。
  * @param active - 当前是否允许向 Host 发起请求。
+ * @param pollSeconds - 自动轮询周期（秒）；0 = 仅手动刷新。
  * @returns 最新快照及其加载、失败状态。
  */
-function usePlanQuotas(active: boolean): PlanQuotaState & { reload: () => void } {
+function usePlanQuotas(active: boolean, pollSeconds: number): PlanQuotaState & { reload: () => void } {
   const [state, setState] = useState<PlanQuotaState>({ loading: false })
   const [revision, setRevision] = useState(0)
   const reload = useCallback(() => { setRevision(value => value + 1) }, [])
@@ -154,16 +156,18 @@ function usePlanQuotas(active: boolean): PlanQuotaState & { reload: () => void }
       }
     }
     // 页面在后台时不轮询：桌面端最小化或切走后请求没有意义，恢复可见时立刻补一次。
-    // 与 useUsageRefresh 的全量概览轮询保持同一套可见性口径。
+    // 与 useUsageRefresh 的全量概览轮询保持同一套可见性口径；仅手动模式（0）不自动补拉。
     const visible = (): boolean => document.visibilityState !== 'hidden'
     void load()
     let timer: ReturnType<typeof setInterval> | undefined
     const start = (): void => {
-      if (timer === undefined) timer = setInterval(() => { if (visible()) void load() }, PLAN_QUOTA_POLL_MS)
+      if (pollSeconds > 0 && timer === undefined) {
+        timer = setInterval(() => { if (visible()) void load() }, pollSeconds * 1000)
+      }
     }
     const stop = (): void => { if (timer !== undefined) { clearInterval(timer); timer = undefined } }
     const onVisibility = (): void => {
-      if (visible()) { void load(); start() } else stop()
+      if (visible() && pollSeconds > 0) { void load(); start() } else stop()
     }
     if (visible()) start()
     document.addEventListener('visibilitychange', onVisibility)
@@ -173,7 +177,7 @@ function usePlanQuotas(active: boolean): PlanQuotaState & { reload: () => void }
       document.removeEventListener('visibilitychange', onVisibility)
       inFlight?.abort()
     }
-  }, [active, revision])
+  }, [active, revision, pollSeconds])
   return { ...state, reload }
 }
 
@@ -259,7 +263,16 @@ interface PlanQuotaPanelProps {
 
 /* 各供应商 Plan 额度：展示每个窗口的下次刷新时间与剩余时长。 */
 export function PlanQuotaPanel({ t, active }: PlanQuotaPanelProps) {
-  const { data, loading, error, reload } = usePlanQuotas(active)
+  // 轮询周期来自用户设置；页签切换会重新挂载本面板，挂载时读一次即可。
+  const [pollSeconds, setPollSeconds] = useState(DEFAULT_TOKEN_MONITOR_SETTINGS.planQuotaPollSeconds)
+  useEffect(() => {
+    const controller = new AbortController()
+    void createTokenMonitorSettingsApi().get(controller.signal)
+      .then(snapshot => { if (!controller.signal.aborted) setPollSeconds(snapshot.settings.planQuotaPollSeconds) })
+      .catch(() => { /* 设置读取失败时保持默认周期。 */ })
+    return () => controller.abort()
+  }, [])
+  const { data, loading, error, reload } = usePlanQuotas(active, pollSeconds)
   const [now, setNow] = useState(() => Date.now())
   // 剩余时长由本地时钟推进，每 30 秒重算一次，组件卸载时清理定时器。
   useEffect(() => {
@@ -267,6 +280,12 @@ export function PlanQuotaPanel({ t, active }: PlanQuotaPanelProps) {
     return () => { clearInterval(timer) }
   }, [])
   return <div className={styles.panel} aria-label={t('planQuotaTitle')}>
+    <div className={styles.toolbar}>
+      <span className={styles.toolbarNote}>
+        {pollSeconds === 0 ? t('planQuotaManualOnly') : t('planQuotaAutoInterval', { seconds: pollSeconds })}
+      </span>
+      <Button variant="ghost" onClick={reload} disabled={loading}>{t('planQuotaRefresh')}</Button>
+    </div>
     {error && <div className={styles.error} role="alert">
       <span>{t(error === 'unavailable' ? 'planQuotaUnavailable' : 'planQuotaFailed')}</span>
       <Button variant="ghost" onClick={reload}>{t('planQuotaRetry')}</Button>

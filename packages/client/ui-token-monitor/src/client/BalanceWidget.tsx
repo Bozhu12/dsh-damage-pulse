@@ -369,8 +369,8 @@ interface RawChargeEvent {
 }
 
 const CHARGE_POLL_MS = 1_000
-/** 余额轮询周期：与 Host 侧 BalanceService 同频，官方结算延迟很小，15s 足以让显示值贴近官网。 */
-const BALANCE_POLL_MS = 15_000
+/** 余额轮询周期改为用户可配（balancePollSeconds，默认 15s，0 = 仅手动）；
+ * 服务端 BalanceRegistry 仍保留 15s 上游缓存与失败退避，客户端只决定多久问一次。 */
 const FLOAT_MS = FLOAT_DURATION_MS
 const FLOAT_EMIT_INTERVAL_MS = 450
 const FLASH_MS = 620
@@ -428,6 +428,13 @@ export function BalanceWidget({
   const usageShowsFallback = balanceScriptAvailable === false && usageSnapshot === null && usageOverview !== null
   const [settingsSnapshot, setSettingsSnapshot] = useState<TokenMonitorSettingsSnapshot>()
   const [animationScale, setAnimationScale] = useState(DEFAULT_TOKEN_MONITOR_SETTINGS.animationScale)
+  // 扣费动效总开关：false = 停 1s 扣费事件轮询与红色飘字/鲸鱼受击（余额校准的绿色提示保留）。
+  const [chargeFxEnabled, setChargeFxEnabled] = useState(DEFAULT_TOKEN_MONITOR_SETTINGS.chargeFxEnabled)
+  // 余额自动轮询周期（秒）；0 = 仅手动刷新。
+  const [balancePollSeconds, setBalancePollSeconds] = useState(DEFAULT_TOKEN_MONITOR_SETTINGS.balancePollSeconds)
+  // 手动刷新触发计数：进余额轮询 effect 的依赖，变化即立刻补拉一次。
+  const [balanceRefreshTick, setBalanceRefreshTick] = useState(0)
+  const [balanceRefreshing, setBalanceRefreshing] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsProviders, setSettingsProviders] = useState<string[]>([])
   const [billingOpen, setBillingOpen] = useState(false)
@@ -629,16 +636,22 @@ const CONTEXT_MENU_Z_INDEX = 1100
   }, [showWhaleGirl, petInstalled])
 
   const applySettingsSnapshot = useCallback((snapshot: TokenMonitorSettingsSnapshot) => {
-    setSettingsSnapshot(snapshot)
+    // revision 未变就复用旧引用，5s 后台刷新不再触发整卡重渲染。
+    setSettingsSnapshot(previous => previous?.revision === snapshot.revision ? previous : snapshot)
     setAnimationScale(snapshot.settings.animationScale)
+    setChargeFxEnabled(snapshot.settings.chargeFxEnabled)
+    setBalancePollSeconds(snapshot.settings.balancePollSeconds)
     if (whaleVisibilityChoice.current === undefined) {
       showWhaleGirlRef.current = snapshot.settings.showWhaleGirl && petInstalled
       setShowWhaleGirl(snapshot.settings.showWhaleGirl)
     }
   }, [petInstalled])
 
-  // 后台/模型修改沿现有设置接口读取；没有活动会话时也能更新角色尺寸。
+  // 后台/模型修改沿现有设置接口读取；没有活动会话但显示作用域有效时也能更新角色尺寸。
+  // 轮询偏好（chargeFxEnabled/balancePollSeconds）也走这里热更新，改动 5 秒内生效。
+  // 路由不可用时与其它端点一样静默，不产生任何请求。
   useEffect(() => {
+    if (!shouldPoll) return
     const controller = new AbortController()
     let loading = false
     const refresh = async () => {
@@ -646,7 +659,7 @@ const CONTEXT_MENU_Z_INDEX = 1100
       loading = true
       try {
         const snapshot = await settingsApi.get(controller.signal)
-        if (!controller.signal.aborted) setAnimationScale(snapshot.settings.animationScale)
+        if (!controller.signal.aborted) applySettingsSnapshot(snapshot)
       } catch (_error) { /* Keep the last valid size during temporary settings failures. */ }
       finally { loading = false }
     }
@@ -654,7 +667,7 @@ const CONTEXT_MENU_Z_INDEX = 1100
     const timer = setInterval(() => void refresh(), 5_000)
     window.addEventListener('focus', refresh)
     return () => { controller.abort(); clearInterval(timer); window.removeEventListener('focus', refresh) }
-  }, [])
+  }, [applySettingsSnapshot, shouldPoll])
 
   const openSettings = useCallback(async () => {
     setContextMenu(null)
@@ -1060,13 +1073,23 @@ const CONTEXT_MENU_Z_INDEX = 1100
     return () => { controller.abort(); clearTimeout(timer) }
   }, [shouldPoll, usageVisible, scope, refreshModules])
 
-  // 扣费轮询：每秒增量拉取；严格按 seq 逐事件入队，不按类型聚合或重排。
+  // 动效关闭期间扣费游标冻结；重开前重置种子，让首次拉取重新锚定基线，
+  // 不把停用期间积压的历史扣费重放成飘字与本地扣减。
   useEffect(() => {
-    if (!shouldPoll || !billingInstalled) return
+    if (!chargeFxEnabled) chargeSeeded.current = false
+  }, [chargeFxEnabled])
+
+  // 扣费轮询：每秒增量拉取；严格按 seq 逐事件入队，不按类型聚合或重排。
+  // chargeFxEnabled=false 时不启动；页面隐藏时停止调度，回到前台立刻补拉。
+  useEffect(() => {
+    if (!shouldPoll || !billingInstalled || !chargeFxEnabled) return
     let cancelled = false
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
+    const hidden = (): boolean => document.visibilityState === 'hidden'
     const poll = async () => {
+      // 页面隐藏期间不发起请求：effect 因依赖变化重跑时也保持静默，回到前台由可见性监听补拉。
+      if (cancelled || hidden()) return
       try {
         const res = await fetch(`/api/token-monitor/charge-events?since=${chargeSeq.current}`, { cache: 'no-store', signal: controller.signal })
         if (!res.ok) return
@@ -1161,18 +1184,27 @@ const CONTEXT_MENU_Z_INDEX = 1100
       } catch {
         // 扣费轮询失败静默（不影响余额显示）。
       } finally {
-        if (!cancelled) timer = setTimeout(() => { void poll() }, CHARGE_POLL_MS)
+        if (!cancelled && !hidden()) timer = setTimeout(() => { void poll() }, CHARGE_POLL_MS)
       }
     }
     void poll()
+    const onVisibility = (): void => {
+      if (cancelled) return
+      clearTimeout(timer)
+      // 回到前台立刻补拉一次；隐藏时只清掉待触发的下一轮，在途请求随其自然完成。
+      if (!hidden()) void poll()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       cancelled = true
       controller.abort()
       clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [shouldPoll, billingInstalled, trigger, scope, balanceUrl, billingEvents, useBillingEvents])
+  }, [shouldPoll, billingInstalled, chargeFxEnabled, trigger, scope, balanceUrl, billingEvents, useBillingEvents])
 
-  // 余额轮询：每 15 秒校准显示余额，检测充值（余额变多）触发绿色动画。
+  // 余额轮询：按设置周期校准显示余额（默认 15s，0 = 仅手动刷新），检测充值（余额变多）触发绿色动画。
+  // 页面隐藏时停止调度，回到前台立刻补拉；手动刷新按钮通过 balanceRefreshTick 触发立即轮询。
   useEffect(() => {
     if (!shouldPoll || !billingInstalled) return
     let cancelled = false
@@ -1180,8 +1212,10 @@ const CONTEXT_MENU_Z_INDEX = 1100
     let inFlight = false
     const nativeAccount = scope?.provider === 'deepseek-account'
     let timer: ReturnType<typeof setTimeout> | undefined
+    const hidden = (): boolean => document.visibilityState === 'hidden'
     const poll = async () => {
-      if (cancelled || inFlight) return
+      // 页面隐藏期间不发起请求：effect 重跑也保持静默，回到前台由可见性监听补拉。
+      if (cancelled || inFlight || hidden()) return
       inFlight = true
       try {
         const res = await fetch(balanceUrl, { cache: 'no-store', signal: controller.signal })
@@ -1239,21 +1273,40 @@ const CONTEXT_MENU_Z_INDEX = 1100
         if (!cancelled) setError(true)
       } finally {
         inFlight = false
+        setBalanceRefreshing(false)
         // API-key cache expires 15s after completion; schedule its next read
         // from completion too, keeping the existing cache and failure backoff.
-        if (!cancelled && !nativeAccount) timer = setTimeout(() => { void poll() }, BALANCE_POLL_MS)
+        // balancePollSeconds=0 表示仅手动刷新；页面隐藏时暂停调度。
+        if (!cancelled && !nativeAccount && balancePollSeconds > 0 && !hidden()) {
+          timer = setTimeout(() => { void poll() }, balancePollSeconds * 1000)
+        }
       }
     }
     void poll()
-    // Fixed start cadence; request latency does not add another 15 seconds.
-    if (nativeAccount) timer = setInterval(() => { void poll() }, BALANCE_POLL_MS)
+    const onVisibility = (): void => {
+      if (cancelled) return
+      // clearTimeout 与 clearInterval 共享同一张定时器表：隐藏时一并清掉两种调度。
+      clearTimeout(timer)
+      clearInterval(timer)
+      timer = undefined
+      // 回到前台立刻补拉一次；仅手动模式（0）由用户按钮驱动，不自动补拉。
+      // nativeAccount 的固定节拍只在这里重建（poll 的 finally 不为它续排）。
+      if (!hidden() && balancePollSeconds > 0) {
+        if (nativeAccount) timer = setInterval(() => { if (!hidden()) void poll() }, balancePollSeconds * 1000)
+        void poll()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    // Fixed start cadence; request latency does not add another interval.
+    if (nativeAccount && balancePollSeconds > 0) timer = setInterval(() => { if (!hidden()) void poll() }, balancePollSeconds * 1000)
     return () => {
       cancelled = true
       controller.abort()
       clearInterval(timer)
       clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [shouldPoll, billingInstalled, trigger, balanceUrl, scopeKey])
+  }, [shouldPoll, billingInstalled, trigger, balanceUrl, scopeKey, balancePollSeconds, balanceRefreshTick])
 
   useEffect(() => {
     if (!shouldPoll) return
@@ -1274,6 +1327,14 @@ const CONTEXT_MENU_Z_INDEX = 1100
       window.removeEventListener('focus', onFocus)
     }
   }, [applySettingsSnapshot, shouldPoll])
+
+  // 手动刷新余额：立即触发一次余额轮询（无论自动轮询是否关闭都可用）。
+  // 无显示作用域时余额轮询 effect 不会运行，入口直接短路避免旋转态悬挂。
+  const refreshBalance = useCallback(() => {
+    if (!shouldPoll || !billingInstalled) return
+    setBalanceRefreshing(true)
+    setBalanceRefreshTick(tick => tick + 1)
+  }, [shouldPoll, billingInstalled])
 
   const consumeNotification = useCallback(() => {
     const result = dequeueNotificationItem(notificationQueueRef.current, Date.now())
@@ -1442,7 +1503,7 @@ const CONTEXT_MENU_Z_INDEX = 1100
               <span>{t('usage')}</span>
             </button>
           </>}
-          {notifyInstalled && <button
+          {(notifyInstalled || petInstalled || wechatInstalled) && <button
             type="button"
             role="menuitem"
             onClick={() => { void openSettings() }}
@@ -1454,7 +1515,7 @@ const CONTEXT_MENU_Z_INDEX = 1100
             {...CONTEXT_MENU_HOVER}
           >
             <span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>⚙</span>
-            <span>{t('notificationSettings')}</span>
+            <span>{t('monitorSettings')}</span>
           </button>}
           {billingInstalled && <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setBillingOpen(true) }} {...CONTEXT_MENU_HOVER} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>¥</span><span>计费规则</span></button>}
           <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setManagerOpen(true) }} {...CONTEXT_MENU_HOVER} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>↻</span><span>{t('modulesTitle')}</span></button>
@@ -1467,10 +1528,10 @@ const CONTEXT_MENU_Z_INDEX = 1100
       {billingInstalled && billingOpen && <Suspense fallback={null}><BillingRulesPanel
         t={t} billingEvents={billingEvents} loadModelCatalog={loadModelCatalog} onClose={() => setBillingOpen(false)}
       /></Suspense>}
-      {notifyInstalled && settingsOpen && (
+      {settingsOpen && (
         <div
           role="dialog"
-          aria-label={PRODUCT_NAME + ' ' + t('notificationSettings')}
+          aria-label={PRODUCT_NAME + ' ' + t('monitorSettings')}
           style={{
             position: 'fixed', inset: 0, zIndex: 1200, display: 'grid', placeItems: 'center',
             padding: 16, background: 'rgba(25, 20, 34, 0.24)',
@@ -1486,9 +1547,10 @@ const CONTEXT_MENU_Z_INDEX = 1100
             )
             : settingsSnapshot !== undefined && (
               <Suspense fallback={null}><TokenMonitorSettingsPanel
-                title={t('notificationSettings')}
+                title={t('monitorSettings')}
                 wechatInstalled={wechatInstalled}
                 petInstalled={petInstalled}
+                notifyInstalled={notifyInstalled}
                 snapshot={settingsSnapshot}
                 onSave={saveSettings}
                 providers={settingsProviders}
@@ -1651,6 +1713,16 @@ const CONTEXT_MENU_Z_INDEX = 1100
             ].join('')}
           </span>
         </span>}
+        {billingInstalled && <button
+          type="button"
+          className={moduleCss.anchor}
+          aria-label="刷新余额"
+          title="刷新余额"
+          onClick={refreshBalance}
+          style={{ fontSize: BALANCE_LABEL_FONT_SIZE, lineHeight: AMOUNT_LINE_HEIGHT, color: 'rgba(255,255,255,0.62)' }}
+        >
+          <span className={balanceRefreshing ? moduleCss.refreshSpin : undefined} style={{ display: 'inline-block' }}>↻</span>
+        </button>}
         {balanceAvailable && !!balanceInfo?.windows?.length && (() => {
           const fmtRemaining = (w: { total: number; used: number }) => Math.round(Math.max(w.total - w.used, 0) * 100) / 100
           const shown = balanceInfo.windows.slice(0, 2)

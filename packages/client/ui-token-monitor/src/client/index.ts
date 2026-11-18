@@ -18,9 +18,11 @@ import type {} from '@deepseek-ai/dsh-client-resources/client'
 // Type-only：拉入 layout 的 shell.overlay slot 契约。
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { BalanceWidget } from './BalanceWidget.tsx'
+import { MonitorDetailSection } from './MonitorSettingsTab.tsx'
 import { createModuleState, moduleInstalled } from './moduleApi.ts'
 import { createDisplayScopeLoader } from './displayScope.ts'
 import type { ClientContextLike, ModelCatalogConnectionLike } from './host-contracts.ts'
+import type { DetailTranslate } from './detail-locales.ts'
 import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { zh, en } from './detail-locales.ts'
 import { createBillingEvents } from './billingEvents.ts'
@@ -77,13 +79,33 @@ export async function apply(ctx: ClientContextLike): Promise<void> {
         if (loading.get(id) === token) loading.delete(id)
       }
     }
-    if (state?.pluginRemoved && !state.cleanupPending) { removeWidget(); disposeOptional() }
+    if (state?.pluginRemoved && !state.cleanupPending) { removeSectionRef.current?.(); removeWidget(); disposeOptional() }
   }
   const disposeOptional = () => {
     loading.clear()
     for (const remove of active.values()) remove()
     active.clear()
   }
+  // 全局监控配置：插件详情页（插件面板 → dsh-damage-pulse）的独立区块。
+  // plugins.detail.section 会渲染到每个插件的详情页，组件按 subject.id 自行过滤。
+  // 只承载全局监控机制（扣费动效/轮询周期）；模块私有设置留在余额卡菜单面板并按模块显隐。
+  // 插件被移除（tombstone）时随 reconcile 一并摘除，不向已卸载的 core 轮询。
+  const removeSectionRef = { current: undefined as undefined | (() => void) }
+  ctx.effect(() => {
+    // 旧宿主/测试 harness 的 locale 可能没有 bind：退化为键名翻译，不阻塞其它贡献注册。
+    const localeService = ctx.get('locale') as LocaleRuntime
+    const t = typeof localeService?.bind === 'function'
+      ? (localeService.bind('token-monitor.details') as unknown as DetailTranslate)
+      : ((key: string) => key) as unknown as DetailTranslate
+    const removeSection = ctx.slots.inject('plugins.detail.section', () => ctx.slots.register({
+      name: 'plugins.detail.section',
+      id: 'dsh-damage-pulse-monitor',
+      locale: 'token-monitor.details',
+      inject: () => ({ t }),
+    }, MonitorDetailSection))
+    removeSectionRef.current = removeSection
+    return () => { removeSectionRef.current = undefined; removeSection() }
+  }, 'token-monitor: plugin detail section')
   const removeWidget = ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay', id: 'token-monitor-balance', locale: 'token-monitor.details',
     inject: () => ({ loadDisplayScope, loadModelCatalog, refreshModules: modules.refresh, hooks: { billingEvents, modules } }),

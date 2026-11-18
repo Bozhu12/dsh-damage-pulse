@@ -153,6 +153,8 @@ export function readProviderSettings(stored: TokenMonitorUserConfig, provider: s
   return {
     ...DEFAULT_TOKEN_MONITOR_SETTINGS, peakReminderEnabled: false, wechatNotificationsEnabled: false,
     ...stored.providerNotifications?.[provider], displayMode: stored.displayMode, showWhaleGirl: stored.showWhaleGirl, animationScale: stored.animationScale,
+    // 轮询/动效偏好是全局行为字段，与显示偏好一样跨 provider 透传。
+    chargeFxEnabled: stored.chargeFxEnabled, balancePollSeconds: stored.balancePollSeconds, planQuotaPollSeconds: stored.planQuotaPollSeconds,
   }
 }
 

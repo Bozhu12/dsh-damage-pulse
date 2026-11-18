@@ -58,7 +58,9 @@ export function createTokenMonitorSettingsController(
       if (provider === 'deepseek-official') {
         await writeUserConfig(ctx, request.patch, request.expectedRevision, ns)
       } else {
-        if (Object.keys(request.patch).some(key => key === 'showWhaleGirl' || key === 'displayMode' || key === 'animationScale')) {
+        // 全局行为字段与显示偏好一样不接受 provider 覆写：写入会被读取端透传遮蔽成死数据。
+        if (Object.keys(request.patch).some(key => key === 'showWhaleGirl' || key === 'displayMode' || key === 'animationScale'
+          || key === 'chargeFxEnabled' || key === 'balancePollSeconds' || key === 'planQuotaPollSeconds')) {
           throw new TypeError('Display preferences are global')
         }
         const current = handle.user().providerNotifications ?? {}

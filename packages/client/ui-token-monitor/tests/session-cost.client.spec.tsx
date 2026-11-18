@@ -178,7 +178,7 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
       ctx: {
         effect: (factory: () => unknown) => { const remove = factory(); if (typeof remove === 'function') pluginDisposers.push(remove as () => void); return remove },
         get: (name: string) => {
-          if (name === 'locale') return { register: () => () => {} }
+          if (name === 'locale') return { register: () => () => {}, bind: () => (key: string) => key }
           if (name === 'connection') return { api: { sessions: {} } }
           if (name === 'remote') return { session: { modelCatalog } }
           if (name === 'conversationEvents') return conversationEvents

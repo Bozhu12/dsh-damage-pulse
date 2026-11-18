@@ -92,13 +92,15 @@ export interface TokenMonitorSettingsApi {
 }
 
 /**
- * Browser-safe client for the dedicated Token Monitor settings endpoint.
+ * Browser-safe client for the Token Monitor settings endpoint.
  * @param fetcher - HTTP implementation used to read the Host endpoint.
+ *   Defaults to a lazy `fetch` binding: module-level singletons created before
+ *   a host (or test) swaps `globalThis.fetch` must resolve it at call time.
  * @param endpoint - Settings endpoint URL.
  * @returns A settings API client bound to the supplied endpoint.
  */
 export function createTokenMonitorSettingsApi(
-  fetcher: FetchLike = fetch,
+  fetcher: FetchLike = (...args) => fetch(...args),
   endpoint = '/api/token-monitor/settings',
 ): TokenMonitorSettingsApi {
   let observed: TokenMonitorSettingsSnapshot | undefined

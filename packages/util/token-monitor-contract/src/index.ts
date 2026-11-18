@@ -54,6 +54,12 @@ export interface TokenMonitorSettings {
   cacheHitAnomalyThreshold: number
   /** Number of consecutive valid calls in the rolling sample. */
   cacheHitAnomalyConsecutiveCalls: number
+  /** Charge-event effects: the 1s incremental poll, damage floats and whale hit reactions. */
+  chargeFxEnabled: boolean
+  /** Balance calibration poll period in seconds; 0 disables auto polling (manual refresh only). */
+  balancePollSeconds: number
+  /** Plan quota poll period in seconds; 0 disables auto polling (manual refresh only). */
+  planQuotaPollSeconds: number
 }
 
 /** Partial update accepted for persisted Token Monitor settings. */
@@ -113,6 +119,9 @@ export const DEFAULT_TOKEN_MONITOR_SETTINGS: Readonly<TokenMonitorSettings> = Ob
   cacheHitAnomalyNotificationEnabled: false,
   cacheHitAnomalyThreshold: 30,
   cacheHitAnomalyConsecutiveCalls: 3,
+  chargeFxEnabled: true,
+  balancePollSeconds: 15,
+  planQuotaPollSeconds: 60,
 })
 
 /** Persisted public keys accepted in Token Monitor settings. */
@@ -132,6 +141,9 @@ export const TOKEN_MONITOR_SETTING_KEYS = Object.freeze([
   'cacheHitAnomalyNotificationEnabled',
   'cacheHitAnomalyThreshold',
   'cacheHitAnomalyConsecutiveCalls',
+  'chargeFxEnabled',
+  'balancePollSeconds',
+  'planQuotaPollSeconds',
 ] as const satisfies readonly (keyof TokenMonitorSettings)[])
 
 const BOOLEAN_KEYS = new Set<keyof TokenMonitorSettings>([
@@ -145,6 +157,7 @@ const BOOLEAN_KEYS = new Set<keyof TokenMonitorSettings>([
   'whaleBubbleEnabled',
   'wechatNotificationsEnabled',
   'cacheHitAnomalyNotificationEnabled',
+  'chargeFxEnabled',
 ])
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 
@@ -182,6 +195,16 @@ function validateSettingValue(key: keyof TokenMonitorSettings, value: unknown): 
     if (typeof value !== 'number' || !Number.isSafeInteger(value)) return '必须是 2 到 20 的整数'
     if (value < 2 || value > 20) return '必须在 2 到 20 之间'
   }
+  if (key === 'balancePollSeconds') {
+    if (typeof value !== 'number' || !Number.isSafeInteger(value)) return '必须是整数秒'
+    // 0 = 仅手动刷新；自动轮询下限 5s，避免把外网余额查询打成本机高频循环。
+    if (value !== 0 && (value < 5 || value > 3600)) return '必须是 0，或 5 到 3600 之间的整数'
+  }
+  if (key === 'planQuotaPollSeconds') {
+    if (typeof value !== 'number' || !Number.isSafeInteger(value)) return '必须是整数秒'
+    // 0 = 仅手动刷新；自动轮询下限 15s，与 Host 侧上游节流窗口对齐。
+    if (value !== 0 && (value < 15 || value > 86400)) return '必须是 0，或 15 到 86400 之间的整数'
+  }
   return undefined
 }
 
@@ -212,8 +235,12 @@ function parseSettingsObject(
   if (!partial) {
     for (const key of TOKEN_MONITOR_SETTING_KEYS) {
       if (!(key in value)) {
-        // This additive preference did not exist when sizing was hard-coded.
+        // Additive preferences that did not exist in older persisted snapshots
+        // fall back to their defaults instead of failing the whole read.
         if (key === 'animationScale') output[key] = DEFAULT_TOKEN_MONITOR_SETTINGS.animationScale
+        else if (key === 'chargeFxEnabled') output[key] = DEFAULT_TOKEN_MONITOR_SETTINGS.chargeFxEnabled
+        else if (key === 'balancePollSeconds') output[key] = DEFAULT_TOKEN_MONITOR_SETTINGS.balancePollSeconds
+        else if (key === 'planQuotaPollSeconds') output[key] = DEFAULT_TOKEN_MONITOR_SETTINGS.planQuotaPollSeconds
         else fields[`${prefix}.${key}`] = '缺少必填字段'
       }
     }

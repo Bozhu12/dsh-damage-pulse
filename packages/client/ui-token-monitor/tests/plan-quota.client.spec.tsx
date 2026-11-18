@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import type { PlanQuotaSnapshot } from '@deepseek-ai/dsh-token-monitor-contract'
+import { DEFAULT_TOKEN_MONITOR_SETTINGS, type PlanQuotaSnapshot } from '@deepseek-ai/dsh-token-monitor-contract'
 import { UsageOverview } from '../src/client/UsageOverview.tsx'
 import { zh, type DetailTranslate } from '../src/client/detail-locales.ts'
 
@@ -287,4 +287,60 @@ it('剩余时长随本地时钟每 30 秒推进一次', async () => {
   expect(screen.getByText('还剩 15 秒')).toBeTruthy()
   await tick(30_000)
   expect(screen.getByText('已到期')).toBeTruthy()
+})
+
+it('设置 15 秒周期时按设置轮询，而不是固定 60 秒', async () => {
+  const settingsSnapshot = {
+    schemaVersion: 3, revision: 1,
+    settings: { ...DEFAULT_TOKEN_MONITOR_SETTINGS, planQuotaPollSeconds: 15 },
+  }
+  const { fetcher } = mount(async url => {
+    if (String(url).includes('settings')) return ok(settingsSnapshot)
+    return ok(String(url).includes('plan-quotas') ? planSnapshot : summary)
+  })
+  await flush()
+  fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
+  await flush()
+  // 首次加载 + 设置周期生效触发的一次立即重拉，共 2 次；此后按 15s 周期。
+  expect(planCalls(fetcher)).toHaveLength(2)
+  await tick(16_000)
+  expect(planCalls(fetcher)).toHaveLength(3)
+  await tick(15_000)
+  expect(planCalls(fetcher)).toHaveLength(4)
+})
+
+it('设置 0 = 仅手动：不自动轮询，按钮立即补拉并显示手动模式提示', async () => {
+  const settingsSnapshot = {
+    schemaVersion: 3, revision: 1,
+    settings: { ...DEFAULT_TOKEN_MONITOR_SETTINGS, planQuotaPollSeconds: 0 },
+  }
+  const { fetcher } = mount(async url => {
+    if (String(url).includes('settings')) return ok(settingsSnapshot)
+    return ok(String(url).includes('plan-quotas') ? planSnapshot : summary)
+  })
+  await flush()
+  fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
+  await flush()
+  expect(screen.getByText('手动刷新模式（设置里可改回自动轮询）')).toBeTruthy()
+  // 首次加载 + 设置生效触发的一次立即重拉，共 2 次；之后不再自动轮询。
+  expect(planCalls(fetcher)).toHaveLength(2)
+  await tick(12000)
+  expect(planCalls(fetcher)).toHaveLength(2)
+  fireEvent.click(screen.getByRole('button', { name: '立即刷新' }))
+  await flush()
+  expect(planCalls(fetcher)).toHaveLength(3)
+})
+
+it('默认周期下手动按钮也能立即补拉', async () => {
+  const { fetcher } = mount(async url => {
+    if (String(url).includes('settings')) return fail()
+    return ok(String(url).includes('plan-quotas') ? planSnapshot : summary)
+  })
+  await flush()
+  fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
+  await flush()
+  expect(planCalls(fetcher)).toHaveLength(1)
+  fireEvent.click(screen.getByRole('button', { name: '立即刷新' }))
+  await flush()
+  expect(planCalls(fetcher)).toHaveLength(2)
 })

@@ -52,6 +52,11 @@ export const Config = z.object({
   cacheHitAnomalyNotificationEnabled: z.boolean().default(DEFAULT_TOKEN_MONITOR_SETTINGS.cacheHitAnomalyNotificationEnabled).volatile(),
   cacheHitAnomalyThreshold: z.number().min(0).max(100).default(DEFAULT_TOKEN_MONITOR_SETTINGS.cacheHitAnomalyThreshold).volatile(),
   cacheHitAnomalyConsecutiveCalls: z.number().min(2).max(20).default(DEFAULT_TOKEN_MONITOR_SETTINGS.cacheHitAnomalyConsecutiveCalls).volatile(),
+  chargeFxEnabled: z.boolean().default(DEFAULT_TOKEN_MONITOR_SETTINGS.chargeFxEnabled).volatile(),
+  // 与契约的 0-例外区间一致（schemastery 无整数断言，分数留给读取端契约校验兜底）：
+  // 0 = 仅手动；手改配置文件写进非法值会让设置读取端整体拒绝。
+  balancePollSeconds: z.union([z.const(0), z.number().min(5).max(3600)]).default(DEFAULT_TOKEN_MONITOR_SETTINGS.balancePollSeconds).volatile(),
+  planQuotaPollSeconds: z.union([z.const(0), z.number().min(15).max(86400)]).default(DEFAULT_TOKEN_MONITOR_SETTINGS.planQuotaPollSeconds).volatile(),
   /** 逐 provider 的提醒覆盖；对象递归合并，改一家不会清掉另一家。 */
   providerNotifications: providerOverrides.default({}).volatile(),
 })
@@ -59,8 +64,8 @@ export const Config = z.object({
 /** 设置面板分组用的字段归属；客户端与擦除路径共用同一份清单。 */
 export const TOKEN_MONITOR_OWNED_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   pet: Object.freeze(['showWhaleGirl', 'animationScale']),
-  overview: Object.freeze(['displayMode']),
-  billing: Object.freeze(['billing', 'balanceScripts', 'balanceProviders', 'balanceEndpoints', 'balanceEndpointPolicyVersion']),
+  overview: Object.freeze(['displayMode', 'planQuotaPollSeconds']),
+  billing: Object.freeze(['billing', 'balanceScripts', 'balanceProviders', 'balanceEndpoints', 'balanceEndpointPolicyVersion', 'chargeFxEnabled', 'balancePollSeconds']),
   notify: Object.freeze([
     'dailyBudgetEnabled', 'dailyBudgetCny', 'budgetExceededNotificationEnabled', 'peakReminderEnabled',
     'peakReminderEnterPeak', 'peakReminderEnterValley', 'notifyOncePerTransition', 'whaleBubbleEnabled',
@@ -75,6 +80,7 @@ export const TOKEN_MONITOR_VOLATILE_FIELDS: readonly string[] = Object.freeze([
   'peakReminderEnabled', 'peakReminderEnterPeak', 'peakReminderEnterValley', 'notifyOncePerTransition',
   'whaleBubbleEnabled', 'wechatNotificationsEnabled', 'cacheHitAnomalyNotificationEnabled',
   'cacheHitAnomalyThreshold', 'cacheHitAnomalyConsecutiveCalls', 'providerNotifications',
+  'chargeFxEnabled', 'balancePollSeconds', 'planQuotaPollSeconds',
 ])
 
 /** 迁到插件自有 JSON 状态、不再属于 profile patch 的内部字段。 */

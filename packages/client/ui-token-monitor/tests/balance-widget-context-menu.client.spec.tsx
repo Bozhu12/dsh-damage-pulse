@@ -17,8 +17,8 @@ vi.mock('../src/client/settingsApi.ts', async (importOriginal) => {
 })
 
 const { BalanceWidget } = await import('../src/client/BalanceWidget.tsx')
-const labels = ['显示鲸鱼娘', '显示用量概览', '用量明细', '通知设置', '计费规则', '模块管理']
-const translations: Record<string, string> = { title: '用量明细', usage: '用量明细', notificationSettings: '通知设置', modulesTitle: '模块管理', billingTitle: '计费规则' }
+const labels = ['显示鲸鱼娘', '显示用量概览', '用量明细', '监控设置', '计费规则', '模块管理']
+const translations: Record<string, string> = { title: '用量明细', usage: '用量明细', monitorSettings: '监控设置', modulesTitle: '模块管理', billingTitle: '计费规则' }
 
 beforeEach(() => { window.localStorage.clear() })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })

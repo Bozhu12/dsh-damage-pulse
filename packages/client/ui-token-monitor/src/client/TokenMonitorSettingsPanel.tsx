@@ -72,7 +72,8 @@ function parseNumberInput(id: NumberInputId, raw: string): number | undefined {
   }
   if (!Number.isInteger(value)) return undefined
   if (id === 'cache-hit-anomaly-threshold') return value >= 0 && value <= 100 ? value : undefined
-  return value >= 2 && value <= 20 ? value : undefined
+  if (id === 'cache-hit-anomaly-consecutive') return value >= 2 && value <= 20 ? value : undefined
+  return undefined
 }
 
 function numberInputError(id: NumberInputId): string {
@@ -92,6 +93,8 @@ export interface TokenMonitorSettingsPanelProps {
   title: string
   wechatInstalled?: boolean
   petInstalled?: boolean
+  /** notify 模块未安装时不渲染「提醒规则」（禁止未安装模块的设置入侵面板）。 */
+  notifyInstalled?: boolean
   providers?: readonly string[]
   loadProvider?(provider: string): Promise<TokenMonitorSettingsSnapshot>
   saveProvider?(provider: string, request: TokenMonitorSettingsPatchRequest): Promise<TokenMonitorSettingsSnapshot>
@@ -729,7 +732,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
 
       <div className="token-monitor-settings__grid">
         <div className="token-monitor-settings__left-stack">
-          <section className="token-monitor-settings__section" style={SECTION} aria-labelledby="rules-settings-title">
+          {props.notifyInstalled !== false && <section className="token-monitor-settings__section" style={SECTION} aria-labelledby="rules-settings-title">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <div id="rules-settings-title"><SectionTitle iconName="cute-icon-warning" title="提醒规则" /></div>
               {props.loadProvider && <select aria-label="提醒供应商" value={provider} disabled={saveState === 'saving' || switchingProvider} onChange={(event) => { void selectProvider(event.target.value) }} style={{ maxWidth: '48%', minWidth: 0, color: 'inherit', background: 'var(--dsw-alias-monitor-button)', border: '1px solid var(--dsw-alias-monitor-button-border)', borderRadius: 8, padding: '4px 6px', font: 'inherit', fontSize: 12 }}>
@@ -773,9 +776,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
                 </label>
               </div>
             </fieldset>
-          </section>
-
-
+          </section>}
         </div>
 
         <section className="token-monitor-settings__section token-monitor-settings__section--notification" style={SECTION} aria-labelledby="notification-settings-title">
