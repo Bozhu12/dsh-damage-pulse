@@ -63,9 +63,12 @@ export const Config = z.object({
 
 /** 设置面板分组用的字段归属；客户端与擦除路径共用同一份清单。 */
 export const TOKEN_MONITOR_OWNED_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  // 全局监控机制（扣费动效/轮询周期）单独成组：插件核心常驻，不挂靠任何可卸载模块，
+  // 因此模块级擦除（如擦除计费数据）不应重置它们；仅 plugin 级擦除随全量字段覆盖。
+  monitor: Object.freeze(['chargeFxEnabled', 'balancePollSeconds', 'planQuotaPollSeconds']),
   pet: Object.freeze(['showWhaleGirl', 'animationScale']),
-  overview: Object.freeze(['displayMode', 'planQuotaPollSeconds']),
-  billing: Object.freeze(['billing', 'balanceScripts', 'balanceProviders', 'balanceEndpoints', 'balanceEndpointPolicyVersion', 'chargeFxEnabled', 'balancePollSeconds']),
+  overview: Object.freeze(['displayMode']),
+  billing: Object.freeze(['billing', 'balanceScripts', 'balanceProviders', 'balanceEndpoints', 'balanceEndpointPolicyVersion']),
   notify: Object.freeze([
     'dailyBudgetEnabled', 'dailyBudgetCny', 'budgetExceededNotificationEnabled', 'peakReminderEnabled',
     'peakReminderEnterPeak', 'peakReminderEnterValley', 'notifyOncePerTransition', 'whaleBubbleEnabled',

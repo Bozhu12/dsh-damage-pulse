@@ -80,7 +80,8 @@ export function apply(ctx: Context, services: ModuleServices, installed: (id: st
     registerSessionCostsRoute(web, () => services.storage.list(), services.details.sessions)
     registerHostCompatRoute(web, () => sessionRecords.status())
     registerTokenMonitorSettingsRoute(web, services.settings, {
-      allowed: key => Object.entries(TOKEN_MONITOR_OWNED_FIELDS).some(([id, keys]) => keys.includes(key) && installed(id)),
+      // monitor 组是 core 级全局机制，不依赖可卸载模块；其余组仍按模块安装态放行。
+      allowed: key => Object.entries(TOKEN_MONITOR_OWNED_FIELDS).some(([id, keys]) => keys.includes(key) && (id === 'monitor' || installed(id))),
       run: action => work.run(action),
     })
   })
