@@ -114,6 +114,32 @@ describe('provider balance registry', () => {
     expect(warn).toHaveBeenCalledOnce()
     await registry.stop()
   })
+  it('serves the cached value inside the throttle window but a forced read re-queries upstream', async () => {
+    const { script } = await setup()
+    const identity = { apiKey: 'key-a', baseURL: 'https://api.deepseek.com' }
+    let now = 0
+    const request = vi.fn(async () => raw)
+    const clocked = new BalanceRegistry({ readScript: async () => script, resolveIdentity: async () => identity,
+      request, now: () => now })
+    expect(await clocked.get('a')).toMatchObject({ totalBalance: 12 })
+    expect(await clocked.get('a')).toMatchObject({ totalBalance: 12 })
+    expect(request).toHaveBeenCalledOnce()
+    expect(await clocked.get('a', true)).toMatchObject({ totalBalance: 12 })
+    expect(request).toHaveBeenCalledTimes(2)
+    await clocked.stop()
+  })
+  it('shares one in-flight request even when forced', async () => {
+    const { registry, request } = await setup()
+    let finish!: (value: typeof raw) => void
+    request.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const first = registry.get('a', true)
+    const second = registry.get('a', true)
+    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce())
+    finish(raw)
+    expect(await first).toEqual(await second)
+    expect(request).toHaveBeenCalledOnce()
+    await registry.stop()
+  })
   it('honours an upstream retry wait and reports it once per failure streak', async () => {
     const { script } = await setup()
     const identity = { apiKey: 'key-a', baseURL: 'https://api.deepseek.com' }

@@ -344,3 +344,45 @@ it('默认周期下手动按钮也能立即补拉', async () => {
   await flush()
   expect(planCalls(fetcher)).toHaveLength(2)
 })
+
+it('手动刷新请求绕过宿主节流缓存（force=1），自动轮询不带', async () => {
+  const { fetcher } = mount(defaultFetch)
+  await flush()
+  fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
+  await flush()
+  // 挂载首拉与自动轮询都不带 force。
+  expect(planCalls(fetcher).every(([url]) => !String(url).includes('force='))).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: '立即刷新' }))
+  await flush()
+  expect(planCalls(fetcher).at(-1)?.[0]).toContain('force=1')
+})
+
+it('手动刷新在途时按钮立即给出旋转反馈', async () => {
+  const pending: { url: string; resolve: (value: FakeResponse) => void }[] = []
+  const fetcher = vi.fn(async (url: string) => {
+    if (String(url).includes('plan-quotas')) {
+      return await new Promise<FakeResponse>(resolve => { pending.push({ url, resolve }) })
+    }
+    return ok({})
+  })
+  vi.stubGlobal('fetch', fetcher)
+  const view = render(<UsageOverview t={t} compact={false} />)
+  await flush()
+  fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
+  await flush()
+  expect(pending).toHaveLength(1)
+  pending[0].resolve(ok(planSnapshot))
+  await flush()
+  const button = screen.getByRole('button', { name: '立即刷新' }) as HTMLButtonElement
+  expect(button.getAttribute('aria-busy')).toBe('false')
+  fireEvent.click(button)
+  await flush()
+  // 请求在途：aria-busy 置位且按钮内出现旋转图标，不再只有灰化。
+  expect(button.getAttribute('aria-busy')).toBe('true')
+  expect(button.querySelector('span[class*="refreshSpin"]')).toBeTruthy()
+  await act(async () => { pending.at(-1)!.resolve(ok(planSnapshot)) })
+  await flush()
+  expect(button.getAttribute('aria-busy')).toBe('false')
+  expect(button.querySelector('span[class*="refreshSpin"]')).toBeNull()
+  view.unmount()
+})

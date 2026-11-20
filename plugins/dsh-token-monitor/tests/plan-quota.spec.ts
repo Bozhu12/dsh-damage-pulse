@@ -245,6 +245,17 @@ describe('plan quota registry', () => {
     await registry.stop()
   })
 
+  it('a forced snapshot re-queries providers inside the throttle window', async () => {
+    const { registry, request } = setup()
+    await registry.snapshot()
+    await registry.snapshot()
+    expect(request).toHaveBeenCalledTimes(2)
+    const forced = await registry.snapshot(true)
+    expect(forced.providers).toHaveLength(2)
+    expect(request).toHaveBeenCalledTimes(4)
+    await registry.stop()
+  })
+
   it('marks a failing provider as error without leaking provider details', async () => {
     const warn = vi.fn()
     const request = vi.fn(async () => { throw new Error('https://api.z.ai/api/monitor/usage/quota/limit rejected key-a') })
@@ -342,6 +353,23 @@ describe('plan quota endpoint', () => {
     const res = response()
     await createPlanQuotaHandler(registry)({ method: 'POST', url: TOKEN_MONITOR_PLAN_QUOTAS_PATH } as never, res as never)
     expect(res.status).toBe(405)
+    await registry.stop()
+  })
+
+  it('re-queries upstream only when the query string asks for a manual refresh', async () => {
+    const { registry, request } = setup()
+    const handler = createPlanQuotaHandler(registry)
+    const first = response()
+    await handler({ method: 'GET', url: TOKEN_MONITOR_PLAN_QUOTAS_PATH } as never, first as never)
+    expect(first.status).toBe(200)
+    expect(request).toHaveBeenCalledTimes(1)
+    const cached = response()
+    await handler({ method: 'GET', url: TOKEN_MONITOR_PLAN_QUOTAS_PATH } as never, cached as never)
+    expect(request).toHaveBeenCalledTimes(1)
+    const forced = response()
+    await handler({ method: 'GET', url: TOKEN_MONITOR_PLAN_QUOTAS_PATH + '?force=1' } as never, forced as never)
+    expect(forced.status).toBe(200)
+    expect(request).toHaveBeenCalledTimes(2)
     await registry.stop()
   })
 

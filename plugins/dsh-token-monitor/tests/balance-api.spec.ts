@@ -42,10 +42,24 @@ function setup(rejection: 401 | 403 | undefined, scripts: Pick<BalanceScriptConf
     registry,
     handler: routes.get('/api/token-monitor/balance-script')!,
     endpoint: routes.get('/api/token-monitor/balance-endpoint')!,
+    balance: routes.get('/api/token-monitor/balance')!,
   }
 }
 
 describe('balance HTTP security boundary', () => {
+  it('forwards the manual-refresh force flag to the balance registry', async () => {
+    const scripts = { read: vi.fn(), approve: vi.fn(), update: vi.fn(), updateNative: vi.fn() }
+    const { balance, registry } = setup(undefined, scripts)
+    const get = registry.get as unknown as ReturnType<typeof vi.fn>
+    get.mockResolvedValue({ provider: 'fast', totalBalance: 12.5 })
+    const forced = response()
+    await balance(request('GET', '/api/token-monitor/balance?provider=fast&force=1'), forced)
+    expect(forced.status).toBe(200)
+    expect(get).toHaveBeenLastCalledWith('fast', true)
+    const plain = response()
+    await balance(request('GET', '/api/token-monitor/balance?provider=fast'), plain)
+    expect(get).toHaveBeenLastCalledWith('fast', false)
+  })
   it('routes native switch edits, preserves compatibility pauses and rejects ambiguous bodies', async () => {
     const scripts = { read: vi.fn(), approve: vi.fn(), update: vi.fn().mockResolvedValue({ enabled: false }), updateNative: vi.fn().mockResolvedValue({ enabled: false, revision: 2 }) }
     const { handler, registry } = setup(undefined, scripts)
