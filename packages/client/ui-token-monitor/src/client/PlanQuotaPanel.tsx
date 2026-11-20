@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import { DEFAULT_TOKEN_MONITOR_SETTINGS } from '@deepseek-ai/dsh-token-monitor-contract'
 import type { PlanQuotaProvider, PlanQuotaSnapshot, PlanQuotaWindow, PlanQuotaWindowKind } from '@deepseek-ai/dsh-token-monitor-contract'
@@ -6,6 +6,7 @@ import type { DetailKey, DetailTranslate } from './detail-locales.ts'
 import { beijingDateTime } from './detail-model.ts'
 import { createTokenMonitorSettingsApi } from './settingsApi.ts'
 import styles from './PlanQuotaPanel.module.css'
+import moduleEffects from './module-effects.module.css'
 
 /* Host 提供的 Plan 额度快照端点。 */
 export const PLAN_QUOTA_URL = '/api/token-monitor/plan-quotas'
@@ -123,22 +124,26 @@ function formatAmount(value: number): string { return value.toLocaleString('zh-C
 function usePlanQuotas(active: boolean, pollSeconds: number): PlanQuotaState & { reload: () => void } {
   const [state, setState] = useState<PlanQuotaState>({ loading: false })
   const [revision, setRevision] = useState(0)
-  const reload = useCallback(() => { setRevision(value => value + 1) }, [])
+  // 手动刷新越过宿主节流缓存的标记：effect 重跑时读取一次并复位。
+  const forceRef = useRef(false)
+  const reload = useCallback(() => { forceRef.current = true; setRevision(value => value + 1) }, [])
   useEffect(() => {
+    const force = forceRef.current
+    forceRef.current = false
     if (!active) return
     let disposed = false
     let sequence = 0
     // 只保留当前在途请求：新请求开始时中止上一个，卸载时中止当前，
     // 避免长驻轮询下 controller 数组只增不减。
     let inFlight: AbortController | undefined
-    const load = async () => {
+    const load = async (refresh = false) => {
       const id = ++sequence
       inFlight?.abort()
       const controller = new AbortController()
       inFlight = controller
       setState(previous => ({ ...previous, loading: true }))
       try {
-        const response = await fetch(PLAN_QUOTA_URL, { cache: 'no-store', signal: controller.signal })
+        const response = await fetch(refresh ? PLAN_QUOTA_URL + '?force=1' : PLAN_QUOTA_URL, { cache: 'no-store', signal: controller.signal })
         if (disposed || id !== sequence) return
         if (!response.ok) {
           setState(previous => ({ ...previous, loading: false, error: response.status === 404 ? 'unavailable' : 'failed' }))
@@ -158,7 +163,7 @@ function usePlanQuotas(active: boolean, pollSeconds: number): PlanQuotaState & {
     // 页面在后台时不轮询：桌面端最小化或切走后请求没有意义，恢复可见时立刻补一次。
     // 与 useUsageRefresh 的全量概览轮询保持同一套可见性口径；仅手动模式（0）不自动补拉。
     const visible = (): boolean => document.visibilityState !== 'hidden'
-    void load()
+    void load(force)
     let timer: ReturnType<typeof setInterval> | undefined
     const start = (): void => {
       if (pollSeconds > 0 && timer === undefined) {
@@ -284,7 +289,10 @@ export function PlanQuotaPanel({ t, active }: PlanQuotaPanelProps) {
       <span className={styles.toolbarNote}>
         {pollSeconds === 0 ? t('planQuotaManualOnly') : t('planQuotaAutoInterval', { seconds: pollSeconds })}
       </span>
-      <Button variant="ghost" onClick={reload} disabled={loading}>{t('planQuotaRefresh')}</Button>
+      <Button variant="ghost" onClick={reload} disabled={loading} aria-busy={loading}>
+        <span className={loading ? moduleEffects.refreshSpin : undefined} aria-hidden="true" style={{ display: 'inline-block', marginRight: 6 }}>↻</span>
+        {t('planQuotaRefresh')}
+      </Button>
     </div>
     {error && <div className={styles.error} role="alert">
       <span>{t(error === 'unavailable' ? 'planQuotaUnavailable' : 'planQuotaFailed')}</span>

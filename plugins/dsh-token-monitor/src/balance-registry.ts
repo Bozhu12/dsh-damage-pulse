@@ -34,9 +34,11 @@ export class BalanceRegistry {
 
   /** Read current credentials before serving cached data; never return an older generation.
    * @param provider Exact configured provider identifier.
+   * @param force Bypass the success throttle window for an explicit manual refresh;
+   *   in-flight coalescing and the concurrency cap still apply.
    * @returns Current balance, or undefined while unconfigured, unavailable or throttled.
    */
-  async get(provider: string): Promise<ProviderBalance | undefined> {
+  async get(provider: string, force = false): Promise<ProviderBalance | undefined> {
     if (this.stopped) return undefined
     if (provider === 'deepseek-account') {
       // Teardown also waits for configuration reads before/after native I/O.
@@ -53,7 +55,7 @@ export class BalanceRegistry {
     await preceding
     try {
       // Serialize identity reads, but release the lock before awaiting network I/O.
-      return (await this.prepare(provider)).result
+      return (await this.prepare(provider, force)).result
     } finally {
       release()
       if (this.inspections.get(provider) === lock) this.inspections.delete(provider)
@@ -72,7 +74,7 @@ export class BalanceRegistry {
     return value === undefined ? undefined : { ...value, scriptRevision: script.revision }
   }
 
-  private async prepare(provider: string): Promise<{ result?: ProviderBalance | Promise<ProviderBalance | undefined> }> {
+  private async prepare(provider: string, force: boolean): Promise<{ result?: ProviderBalance | Promise<ProviderBalance | undefined> }> {
     if (this.stopped) return {}
     const generation = this.generations.get(provider) ?? 0
     const [script, identity] = await Promise.all([this.dependencies.readScript(provider), this.dependencies.resolveIdentity(provider)])
@@ -86,7 +88,8 @@ export class BalanceRegistry {
     }
     if (entry.pending) return { result: entry.pending }
     const now = this.dependencies.now ?? Date.now
-    if (now() < entry.nextAttempt || this.active >= 4) return entry.value ? { result: entry.value } : {}
+    // force 只越过成功节流窗口；并发上限仍然生效，保护上游不被连点打爆。
+    if ((now() < entry.nextAttempt && !force) || this.active >= 4) return entry.value ? { result: entry.value } : {}
     const current = entry
     this.active++
     current.pending = (async () => {

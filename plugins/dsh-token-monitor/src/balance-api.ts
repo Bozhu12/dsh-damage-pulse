@@ -26,8 +26,9 @@ export function registerBalanceApi(ctx: Context, scripts: BalanceScriptConfig, r
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/token-monitor/balance', handler: async (req, res) => {
     if (!guard(req, res)) return
     if (req.method !== 'GET') { send(res, 405, { error: { code: 'METHOD_NOT_ALLOWED' } }); return }
-    const provider = new URL(req.url ?? '/', 'http://localhost').searchParams.get('provider') ?? 'deepseek-official'
-    try { assertProvider(ctx, provider); send(res, 200, await registry.get(provider) ?? null) }
+    const query = new URL(req.url ?? '/', 'http://localhost').searchParams
+    const provider = query.get('provider') ?? 'deepseek-official'
+    try { assertProvider(ctx, provider); send(res, 200, await registry.get(provider, query.get('force') === '1') ?? null) }
     catch { send(res, 200, null) }
   } }), 'dsh-token-monitor: provider balance route')
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/token-monitor/balance-script', handler: async (req, res) => {

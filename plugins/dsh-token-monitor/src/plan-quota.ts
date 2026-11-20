@@ -424,12 +424,14 @@ export class PlanQuotaRegistry {
 
   /**
    * Query every configured provider that exposes plan quotas.
+   * @param force Bypass the throttle window for an explicit manual refresh;
+   *   in-flight coalescing still applies.
    * @returns Snapshot ordered by provider identifier.
    */
-  async snapshot(): Promise<PlanQuotaSnapshot> {
+  async snapshot(force = false): Promise<PlanQuotaSnapshot> {
     const providers = [...new Set(this.dependencies.listProviders())].sort()
     const results = await Promise.all(providers.map(async provider => {
-      try { return await this.get(provider) }
+      try { return await this.get(provider, force) }
       catch { return undefined }
     }))
     const entries: PlanQuotaProvider[] = []
@@ -440,10 +442,12 @@ export class PlanQuotaRegistry {
   /**
    * Read one provider's plan quota.
    * @param provider Exact configured provider identifier.
+   * @param force Bypass the throttle window for an explicit manual refresh;
+   *   in-flight coalescing still applies.
    * @returns The provider entry, or undefined when the provider has no
    * credential, no known gateway or no usable answer.
    */
-  async get(provider: string): Promise<PlanQuotaProvider | undefined> {
+  async get(provider: string, force = false): Promise<PlanQuotaProvider | undefined> {
     if (this.stopped) return undefined
     const identity = await this.dependencies.resolveIdentity(provider)
     if (this.stopped) return undefined
@@ -461,7 +465,8 @@ export class PlanQuotaRegistry {
       this.entries.set(provider, entry)
     }
     if (entry.pending !== undefined) return entry.pending
-    if (this.now() < entry.nextAttempt) return entry.value
+    // force 只越过节流窗口；在途请求合并仍然生效。
+    if (!force && this.now() < entry.nextAttempt) return entry.value
     const current = entry
     const pending = this.run(current, provider, identity)
     current.pending = pending
@@ -559,7 +564,9 @@ function send(res: ServerResponse, status: number, value: unknown): void {
 export function createPlanQuotaHandler(registry: PlanQuotaRegistry): (request: IncomingMessage, response: ServerResponse) => Promise<void> {
   return async (request, response) => {
     if (request.method !== 'GET') { send(response, 405, { error: { code: 'METHOD_NOT_ALLOWED' } }); return }
-    try { send(response, 200, await registry.snapshot()) }
+    // 手动刷新按钮带 force=1，越过宿主侧节流窗口；自动轮询保持缓存节流。
+    const force = new URL(request.url ?? '/', 'http://localhost').searchParams.get('force') === '1'
+    try { send(response, 200, await registry.snapshot(force)) }
     catch { send(response, 200, { updatedAt: Date.now(), providers: [] }) }
   }
 }

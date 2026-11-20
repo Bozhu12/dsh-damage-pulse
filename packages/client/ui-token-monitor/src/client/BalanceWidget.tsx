@@ -138,6 +138,8 @@ const PEAK_LINE_HEIGHT = '26px'
 const DISPLAY_GAP = 8
 /** 不显示用量时「余额」字样字号：沿用调大前的观感，保持原布局。 */
 const BALANCE_LABEL_FONT_SIZE = 16
+/** 手动刷新旋转图标的可感知最短时长：本地响应快于肉眼感知时仍给出反馈。 */
+const MANUAL_REFRESH_SPIN_MS = 600
 type WhalePose = AnimatedWhalePose
 const DEATH_ASSET = `${WHALE_ASSET_ROOT}/death-stranded-v6-trim.png`
 
@@ -435,6 +437,11 @@ export function BalanceWidget({
   // 手动刷新触发计数：进余额轮询 effect 的依赖，变化即立刻补拉一次。
   const [balanceRefreshTick, setBalanceRefreshTick] = useState(0)
   const [balanceRefreshing, setBalanceRefreshing] = useState(false)
+  // 手动刷新越过宿主节流缓存的标记：轮询 effect 重跑时读取一次并复位。
+  const balanceForceRef = useRef(false)
+  // 手动旋转的最短可感知时长：响应太快也要让用户看得到“进行中”反馈。
+  const balanceManualAtRef = useRef(0)
+  const balanceSpinTimerRef = useRef<ReturnType<typeof setTimeout>>()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsProviders, setSettingsProviders] = useState<string[]>([])
   const [billingOpen, setBillingOpen] = useState(false)
@@ -1204,21 +1211,30 @@ const CONTEXT_MENU_Z_INDEX = 1100
   }, [shouldPoll, billingInstalled, chargeFxEnabled, trigger, scope, balanceUrl, billingEvents, useBillingEvents])
 
   // 余额轮询：按设置周期校准显示余额（默认 15s，0 = 仅手动刷新），检测充值（余额变多）触发绿色动画。
-  // 页面隐藏时停止调度，回到前台立刻补拉；手动刷新按钮通过 balanceRefreshTick 触发立即轮询。
+  // 页面隐藏时停止调度，回到前台立刻补拉；手动刷新按钮通过 balanceRefreshTick 触发立即轮询，
+  // 并携带 force=1 越过宿主侧 15 秒节流缓存，保证手动刷新拿到真正的上游数据。
   useEffect(() => {
-    if (!shouldPoll || !billingInstalled) return
+    // 手动标记只被本次 effect 运行消费一次；作用域在点击后消失时连带复位旋转态。
+    const force = balanceForceRef.current
+    balanceForceRef.current = false
+    if (!shouldPoll || !billingInstalled) { setBalanceRefreshing(false); return }
     let cancelled = false
     const controller = new AbortController()
     let inFlight = false
     const nativeAccount = scope?.provider === 'deepseek-account'
     let timer: ReturnType<typeof setTimeout> | undefined
     const hidden = (): boolean => document.visibilityState === 'hidden'
-    const poll = async () => {
+    const resetSpin = (delay: number): void => {
+      clearTimeout(balanceSpinTimerRef.current)
+      balanceSpinTimerRef.current = setTimeout(() => { balanceSpinTimerRef.current = undefined; setBalanceRefreshing(false) }, delay)
+    }
+    const poll = async (refresh = false) => {
       // 页面隐藏期间不发起请求：effect 重跑也保持静默，回到前台由可见性监听补拉。
+      // 旋转态由后续完成的轮询兜底复位，这里提前返回不清理。
       if (cancelled || inFlight || hidden()) return
       inFlight = true
       try {
-        const res = await fetch(balanceUrl, { cache: 'no-store', signal: controller.signal })
+        const res = await fetch(refresh ? balanceUrl + '&force=1' : balanceUrl, { cache: 'no-store', signal: controller.signal })
         if (!res.ok) {
           if (!cancelled) setError(true)
           return
@@ -1273,7 +1289,9 @@ const CONTEXT_MENU_Z_INDEX = 1100
         if (!cancelled) setError(true)
       } finally {
         inFlight = false
-        setBalanceRefreshing(false)
+        // 旧 effect 运行（cancelled）不得触碰新运行的旋转态，否则手动刷新的
+        // 转圈会被旧请求的收尾提前掐灭；手动刷新保底一个可感知的最短旋转时长。
+        if (!cancelled) resetSpin(refresh ? Math.max(0, MANUAL_REFRESH_SPIN_MS - (Date.now() - balanceManualAtRef.current)) : 0)
         // API-key cache expires 15s after completion; schedule its next read
         // from completion too, keeping the existing cache and failure backoff.
         // balancePollSeconds=0 表示仅手动刷新；页面隐藏时暂停调度。
@@ -1282,7 +1300,7 @@ const CONTEXT_MENU_Z_INDEX = 1100
         }
       }
     }
-    void poll()
+    void poll(force)
     const onVisibility = (): void => {
       if (cancelled) return
       // clearTimeout 与 clearInterval 共享同一张定时器表：隐藏时一并清掉两种调度。
@@ -1304,6 +1322,7 @@ const CONTEXT_MENU_Z_INDEX = 1100
       controller.abort()
       clearInterval(timer)
       clearTimeout(timer)
+      clearTimeout(balanceSpinTimerRef.current)
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [shouldPoll, billingInstalled, trigger, balanceUrl, scopeKey, balancePollSeconds, balanceRefreshTick])
@@ -1328,10 +1347,12 @@ const CONTEXT_MENU_Z_INDEX = 1100
     }
   }, [applySettingsSnapshot, shouldPoll])
 
-  // 手动刷新余额：立即触发一次余额轮询（无论自动轮询是否关闭都可用）。
-  // 无显示作用域时余额轮询 effect 不会运行，入口直接短路避免旋转态悬挂。
+  // 手动刷新余额：立即触发一次余额轮询（无论自动轮询是否关闭都可用），
+  // 并越过宿主节流缓存真正回源。无显示作用域时按钮已禁用，入口仍保留短路兜底。
   const refreshBalance = useCallback(() => {
     if (!shouldPoll || !billingInstalled) return
+    balanceForceRef.current = true
+    balanceManualAtRef.current = Date.now()
     setBalanceRefreshing(true)
     setBalanceRefreshTick(tick => tick + 1)
   }, [shouldPoll, billingInstalled])
@@ -1717,9 +1738,13 @@ const CONTEXT_MENU_Z_INDEX = 1100
           type="button"
           className={moduleCss.anchor}
           aria-label="刷新余额"
-          title="刷新余额"
+          title={shouldPoll ? '刷新余额' : '暂无可刷新的会话作用域'}
+          disabled={!shouldPoll}
+          aria-busy={balanceRefreshing}
+          // 与 ⚙ 锚点同一套边界：阻止卡片拖拽的 pointerdown 捕获吞掉按钮 click。
+          onPointerDown={event => event.stopPropagation()}
           onClick={refreshBalance}
-          style={{ fontSize: BALANCE_LABEL_FONT_SIZE, lineHeight: AMOUNT_LINE_HEIGHT, color: 'rgba(255,255,255,0.62)' }}
+          style={{ fontSize: BALANCE_LABEL_FONT_SIZE, lineHeight: AMOUNT_LINE_HEIGHT, color: 'rgba(255,255,255,0.62)', opacity: shouldPoll ? undefined : 0.45, cursor: shouldPoll ? 'pointer' : 'default' }}
         >
           <span className={balanceRefreshing ? moduleCss.refreshSpin : undefined} style={{ display: 'inline-block' }}>↻</span>
         </button>}
